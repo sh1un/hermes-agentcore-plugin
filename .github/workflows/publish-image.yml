@@ -2,6 +2,7 @@ name: Publish Hermes AgentCore image
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +27,26 @@ jobs:
         run: |
           mkdir -p .ci/hermes-plugin/plugin
           git archive HEAD | tar -x -C .ci/hermes-plugin/plugin
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, re, tomllib
+          version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          manifest = pathlib.Path('plugin.yaml').read_text()
+          assert re.search(r'^version: "' + re.escape(version) + r'"$', manifest, re.M)
+          assert os.environ['RELEASE_TAG'] == 'v' + version
+          PY
+      - uses: docker/metadata-action@v5
+        id: metadata
+        with:
+          images: ghcr.io/sh1un/hermes-agentcore-plugin
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=ref,event=tag
+          flavor: latest=false
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -39,7 +60,7 @@ jobs:
           context: .ci/hermes-plugin
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/sh1un/hermes-agentcore-plugin:${{ github.sha }}
+          tags: ${{ steps.metadata.outputs.tags }}
           build-args: |
             HERMES_BASE_IMAGE=nousresearch/hermes-agent@sha256:64923faeae267792bf9bf87fe3b4c4869e35004e360c7df01730ad801b74d524
             PLUGIN_REVISION=${{ github.sha }}

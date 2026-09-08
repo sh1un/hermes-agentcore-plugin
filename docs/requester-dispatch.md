@@ -4,7 +4,7 @@
 
 借用 OpenClaw per-requester 的身份分流概念，不照搬 model-visible Connect URL 或本地 OAuth credential store
 本次修改只針對 portal mode，direct mode 保留既有行為
-不修改 Hermes 原始碼，不使用 monkey patch，不引入 OpenAB
+不修改 Hermes 原始碼，不使用 monkey patch
 
 ## Evidence
 

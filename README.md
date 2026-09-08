@@ -1,18 +1,25 @@
 # Hermes AgentCore Plugin
 
-Experimental Hermes plugin for per-user AWS AgentCore integration without OpenAB
+Hermes plugin for native Slack account linking and per-user AWS Bedrock AgentCore access
+
+## Versioned MVP
+
+The planned first MVP release is `v0.1.0`. Once published, pin plugin source to that Git tag or use
+`ghcr.io/sh1un/hermes-agentcore-plugin:v0.1.0` for the bundled Hermes runtime.
+Prefer the published digest for immutable deployments.
+See [release notes and limitations](docs/releases/v0.1.0.md).
 
 ## Current status
 
 Consent portal mode: native Cognito login with PKCE, Slack account confirmation,
 portal entry, and per-user read-only Jira dispatch through AgentCore Gateway
 
-No OpenAB dependency. No OAuth artifacts are exposed by authorization tooling to
+No OAuth artifacts are exposed by authorization tooling to
 the LLM. Cognito access tokens live only in memory until expiry or local sign-out.
 Restart requires sign-in again. Provider grants are not revoked by local sign-out
 
-Live Slack/AWS validation, Gateway Policy outcomes and compatibility with the
-existing Suma image remain unverified. Tests are not a production acceptance result
+Live integration behavior, Gateway Policy outcomes and compatibility with each
+host deployment require separate acceptance testing. Unit tests are not production acceptance
 
 [Consent portal design](docs/consent-portal.md) and [portal setup](docs/portal-installation.md)
 
@@ -25,8 +32,8 @@ The original direct Rovo PoC remains available for existing configurations
 
 [Installation and acceptance test](docs/installation.md)
 
-The reference image tag has not yet been mapped to source. See the
-[compatibility audit](docs/compatibility-audit.md) for verified APIs and gaps
+See the [compatibility audit](docs/compatibility-audit.md) for host API requirements
+and integration gaps
 
 ## Development
 

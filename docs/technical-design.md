@@ -8,7 +8,7 @@ Updated: 2026/09/08 UTC+8
 
 讓既有 Hermes 使用者安裝 Plugin 後，可以在 Slack 連接自己的第三方帳號，透過 AWS AgentCore 使用 Jira、Confluence、GitHub，並能從原生介面停止使用連接
 
-執行路徑完全不依賴 OpenAB，保留既有 Hermes gateway、config、skills、memory、model routing 與 runtime scripts
+透過 Hermes Plugin 介面擴充，保留 host 的 gateway、config、skills、memory、model routing 與 runtime scripts
 
 安裝 Plugin 仍需要新增 Plugin 設定、AWS IAM 權限，以及可能的 Slack App 設定，保留既有行為不代表零設定，也不代表模型輸出能逐字一致
 
@@ -45,7 +45,7 @@ flowchart TD
 
 圖中的 MCP endpoint 必須明確區分 direct provider MCP 與 AgentCore Gateway，只有實際走 Gateway 的呼叫才能主張 Gateway Policy 已套用
 
-Plugin 不需要 OpenAB binary、image、ACP process 或服務 endpoint
+Plugin 直接載入 Hermes process，不需要額外的 agent harness
 
 ## Technology Choices
 

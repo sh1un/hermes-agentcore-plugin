@@ -6,7 +6,7 @@
 
 Plugin 負責 Slack 使用者登入 Cognito、原生確認身份、以該使用者的 access token 呼叫 Gateway
 第三方 token 由 Gateway 與 AgentCore Identity 處理，Plugin 不取回 Jira token
-此設計不依賴 OpenAB
+此設計透過 Hermes Plugin 介面整合
 
 ## Identity and Flow
 
@@ -46,7 +46,7 @@ Portal 模式不使用 legacy SQLite、provider token exchange 或確認碼頁�
 
 需要準備 Cognito public app client，啟用 code flow 與 PKCE
 Gateway allowedClients 必須包含該 client，scope 必須允許 agentcore/gateway.invoke
-另外註冊 Plugin HTTPS /oauth/cognito/callback，不能指向 localhost 或 OpenAB
+另外註冊 Plugin HTTPS /oauth/cognito/callback，必須指向使用者瀏覽器可存取的 Plugin callback endpoint
 Portal 繼續使用既有 /callback 與 /connect/callback，不覆蓋它們
 入口只監聽 loopback，反向代理需與 Plugin 同 network namespace，停用 query log 並設定限流
 不可直接將這個 PoC HTTP server 暴露到 Internet
@@ -60,12 +60,12 @@ Portal 繼續使用既有 /callback 與 /connect/callback，不覆蓋它們
 - 錯誤 state、nonce、issuer、client、scope、過期 JWT、replay 均拒絕
 - callback 完成但尚未按 Slack 確認時不能呼叫
 - OAuth 錯誤與 URL 不進模型結果
-- 保留既有 Suma 行為，真實 Slack / AWS 驗收未完成前不能宣稱遷移成功
+- 保留 host 既有行為，真實 Slack / AWS 驗收未完成前不能宣稱整合成功
 
 ## Limits
 
 不自動讀取 portal Connections 狀態，Signed in 不等於 Jira Connected
-不自動撤銷 portal grant，不自動刷新 token，不配置 AWS 或部署 Suma
+不自動撤銷 portal grant，不自動刷新 token，不配置 AWS 或部署 host
 保留唯讀工具範圍，不以 target READY 或 scope 名稱當作實際操作成功證據
 
 ## References

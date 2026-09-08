@@ -17,7 +17,7 @@ OAuth callbacks and native account connection actions are unchanged
 After a failed Slack read, an operator can inspect only these records on the host
 
 ```bash
-sudo docker logs --since 5m suma-hermes-plugin-staging-hermes-1 2>&1 |
+sudo docker logs --since 5m YOUR_HERMES_CONTAINER 2>&1 |
   grep 'gateway_diagnostic'
 ```
 

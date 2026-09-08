@@ -2,8 +2,8 @@
 
 ## Scope
 
-這是獨立 Hermes directory Plugin，不需要 OpenAB
-不要直接修改既有 Suma，先使用獨立 Hermes home 與測試 Slack App
+這是獨立 Hermes directory Plugin
+不要直接修改正式環境，先使用獨立 Hermes home 與測試 Slack App
 Hermes host API 相容限制請先讀 [compatibility audit](compatibility-audit.md)
 
 ## AWS Prerequisites
