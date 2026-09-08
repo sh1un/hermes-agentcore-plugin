@@ -132,8 +132,9 @@ def enable_portal(ctx, raw):
     def wire(app, adapter):
         if servers:
             raise RuntimeError("Only one Slack adapter per plugin instance is supported")
-        servers.append(start_callback(runtime, settings.get("callback_port", 8849), portal=True))
-        app.use(PortalConnections(runtime, settings["workspace_ids"]))
+        ui = PortalConnections(runtime, settings["workspace_ids"])
+        servers.append(start_callback(runtime, settings.get("callback_port", 8849), portal=True, on_complete=ui.notify))
+        app.use(ui)
     def shutdown():
         for server in servers:
             server.shutdown()

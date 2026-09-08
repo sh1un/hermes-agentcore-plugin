@@ -105,6 +105,52 @@ class PortalTests(unittest.TestCase):
     def call(self, person):
         return self.r.execute(person, "getAccessibleAtlassianResources", {})
 
+    def test_native_direct_login_reuses_link_and_pushes_confirmation(self):
+        async def scenario():
+            ui = PortalConnections(self.r, self.s["workspace_ids"])
+            client = AsyncMock()
+            ui.remember(self.a, client)
+            await ui.home(client, self.a)
+            blocks = client.views_publish.call_args.kwargs["view"]["blocks"]
+            buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
+            connect = next(b for b in buttons if b["text"]["text"] == "連接 Google 帳號")
+            self.assertEqual(connect["action_id"], "hacp:open")
+            self.assertNotIn("agent_prompt", connect)
+            url = connect["url"]
+            await ui.home(client, self.a)
+            self.assertEqual(self.r.login_url(self.a), url)
+            state = parse_qs(urlsplit(url).query)["state"][0]
+            self.assertNotEqual(self.r.login_url(self.b), url)
+            identity = await asyncio.to_thread(self.r.callback, state, "my-account")
+            self.assertEqual(identity, self.a)
+            self.assertEqual(self.call(self.a)["error"], "sign_in_required")
+            updated = asyncio.Event()
+            async def published(**kwargs):
+                self.assertEqual(kwargs["user_id"], self.a.member)
+                updated.set()
+            client.views_publish.side_effect = published
+            await asyncio.to_thread(ui.notify, identity)
+            await asyncio.wait_for(updated.wait(), 2)
+            blocks = client.views_publish.call_args.kwargs["view"]["blocks"]
+            buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
+            confirm = next(b for b in buttons if b["action_id"] == "hacp:confirm")
+            self.assertNotEqual(confirm["value"], state)
+            self.assertNotIn("confirm", confirm)  # One explicit confirmation, no second dialog.
+            with self.assertRaises(ValueError):
+                self.r.confirm(self.b, confirm["value"])
+            self.r.confirm(self.a, confirm["value"])
+            self.assertEqual(self.r.status(self.a)["state"], "signed_in")
+        asyncio.run(scenario())
+
+    def test_direct_login_expiry_and_cancellation(self):
+        first = self.r.login_url(self.a)
+        self.r.signout(self.a)
+        with self.assertRaises(ValueError):
+            self.r.callback(parse_qs(urlsplit(first).query)["state"][0], "code")
+        second = self.r.login_url(self.a)
+        self.now += 601
+        self.assertNotEqual(second, self.r.login_url(self.a))
+
     def test_two_users_and_local_signout(self):
         for person, account in [(self.a, "a"), (self.b, "b")]:
             _, attempt = self.login(person, account)
@@ -191,8 +237,9 @@ class PortalHostTests(unittest.TestCase):
         # Test local HTTP only, without macOS system proxy discovery or DNS.
         opener = build_opener(ProxyHandler({}))
         urlopen = opener.open
+        on_complete = Mock()
         with patch("socket.getfqdn", return_value="localhost"):
-            server = start_callback(runtime, 0, portal=True)
+            server = start_callback(runtime, 0, portal=True, on_complete=on_complete)
         try:
             url = f"http://127.0.0.1:{server.server_port}/oauth/cognito/callback"
             with urlopen(url + "?state=private-state&code=private-code", timeout=3) as response:
@@ -201,6 +248,7 @@ class PortalHostTests(unittest.TestCase):
                 self.assertNotIn("private", body)
                 self.assertIn("Slack", body)
             runtime.callback.assert_called_once_with("private-state", "private-code")
+            on_complete.assert_called_once_with(runtime.callback.return_value)
             with self.assertRaises(HTTPError) as caught:
                 urlopen(url + "?state=a&state=b&code=c", timeout=3)
             self.assertEqual(caught.exception.code, 400)
@@ -209,6 +257,7 @@ class PortalHostTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as caught:
                 urlopen(url + "?state=a&code=c", timeout=3)
             self.assertNotIn(b"private-token", caught.exception.read())
+            self.assertEqual(on_complete.call_count, 1)
             caught.exception.close()
         finally:
             server.shutdown()

@@ -157,6 +157,18 @@ class PortalRuntime:
             self.pending[attempt.state] = attempt
             return self.backend.authorize(attempt)
 
+    def login_url(self, identity):
+        """Native Home only. Refreshing Home must not invalidate a browser login."""
+        self._identity(identity)
+        with self.lock:
+            self._purge()
+            for attempt in self.pending.values():
+                if attempt.identity == identity:
+                    if attempt.login is not None:
+                        raise ValueError("Confirm the pending identity first")
+                    return self.backend.authorize(attempt)
+            return self.start(identity)
+
     def callback(self, state, code):
         with self.lock:
             self._purge()
@@ -168,6 +180,7 @@ class PortalRuntime:
             attempt.login = login
             # Independent nonce for Slack confirmation, not the OAuth state.
             self.pending[secrets.token_urlsafe(32)] = attempt
+            return attempt.identity
 
     def status(self, identity):
         self._identity(identity)

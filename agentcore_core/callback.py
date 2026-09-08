@@ -4,7 +4,7 @@ from urllib.parse import urlsplit, parse_qs
 import threading
 
 
-def start_callback(runtime, port, portal=False):
+def start_callback(runtime, port, portal=False, on_complete=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -24,8 +24,13 @@ def start_callback(runtime, port, portal=False):
                 if set(query) != expected or any(len(v) != 1 for v in query.values()):
                     raise ValueError()
                 if portal:
-                    runtime.callback(query["state"][0], query["code"][0])
-                    body = b"Login received. Return to Slack app Home, click Refresh and confirm your account."
+                    identity = runtime.callback(query["state"][0], query["code"][0])
+                    if on_complete:
+                        try:
+                            on_complete(identity)
+                        except Exception:
+                            pass  # UI delivery failure must not undo a consumed callback.
+                    body = b"Login received. Return to Slack app Home and confirm your account. If the page has not updated, use the backup refresh button."
                 else:
                     code = runtime.callback(query["session_id"][0], query["state"][0])
                     body = ("Authorization ready. Return to the app Home, select Enter code, "

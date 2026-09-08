@@ -1,10 +1,41 @@
 """Native portal entry, never registered as an LLM tool."""
 import asyncio
+import threading
+import time
 from slack_bolt.response import BoltResponse
 from .slack_ui import NativeConnections
 
 
 class PortalConnections(NativeConnections):
+    def __init__(self, runtime, workspaces):
+        super().__init__(runtime, workspaces)
+        self.destinations = {}
+        self.destination_lock = threading.Lock()
+
+    def remember(self, identity, client):
+        with self.destination_lock:
+            now = time.monotonic()
+            self.destinations = {k: v for k, v in self.destinations.items() if v[0] > now}
+            if identity not in self.destinations and len(self.destinations) >= 256:
+                raise ValueError("UI capacity reached")
+            self.destinations[identity] = (now + 600, asyncio.get_running_loop(), client)
+
+    def notify(self, identity):
+        """Called by callback thread with server-resolved identity, never URL input."""
+        with self.destination_lock:
+            destination = self.destinations.pop(identity, None)
+        if not destination or destination[0] <= time.monotonic():
+            return
+        _, loop, client = destination
+        def enqueue():
+            if len(self.tasks) >= 32:
+                return
+            task = asyncio.create_task(self.safe(self.home(client, identity)))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+        if not loop.is_closed():
+            loop.call_soon_threadsafe(enqueue)
+
     async def home(self, client, identity, notice="", url=None):
         status = await asyncio.to_thread(self.runtime.status, identity)
         def button(label, action, value="none", url=None):
@@ -17,17 +48,18 @@ class PortalConnections(NativeConnections):
                   {"type": "section", "text": {"type": "plain_text", "text":
                     notice or "先連接你的 Google 帳號，讓 Plugin 知道這個 Slack 身份對應哪個登入帳號，再到 Consent portal 使用同一帳號授權 Jira。"}},
                   {"type": "section", "text": {"type": "plain_text", "text":
-                    status["state"] + (": " + status["label"] if status.get("label") else "")}}]
-        buttons = [button("連接 Google 帳號", "login"), button("重新整理", "refresh"), button("登出此 Plugin", "signout")]
-        if url:
-            buttons.append(button("前往 Google 帳號登入", "open", url=url))
+                    {"signed_out": "尚未連接 Google 帳號", "signed_in": "已連接 Google 帳號",
+                     "confirm_identity": "請確認這是你的 Google 帳號"}[status["state"]]
+                    + (": " + status["label"] if status.get("label") else "")}}]
+        buttons = []
+        if status["state"] == "signed_out":
+            url = await asyncio.to_thread(self.runtime.login_url, identity)
+            buttons.append(button("連接 Google 帳號", "open", url=url))
         if status["state"] == "confirm_identity":
             b = button("確認連接此帳號", "confirm", status["attempt"])
-            b["confirm"] = {"title": {"type": "plain_text", "text": "Link your account?"},
-                "text": {"type": "plain_text", "text": "Only confirm if this is your account: " + status["label"]},
-                "confirm": {"type": "plain_text", "text": "Confirm"},
-                "deny": {"type": "plain_text", "text": "Cancel"}}
             buttons.append(b)
+        buttons.append(button("更新狀態（備用）", "refresh"))
+        buttons.append(button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout"))
         blocks.append({"type": "actions", "elements": buttons})
         blocks.append({"type": "actions", "elements": [button("Manage Connections", "portal", url=self.runtime.s["portal_url"])]})
         blocks.append({"type": "context", "elements": [{"type": "plain_text", "text":
@@ -49,6 +81,7 @@ class PortalConnections(NativeConnections):
             return await next()
         try:
             identity = self.identity(body, req.context)
+            self.remember(identity, req.context["client"])
             if len(self.tasks) >= 32:
                 raise ValueError("Busy")
             if not home and aid not in {"hacp:login", "hacp:refresh", "hacp:signout", "hacp:confirm", "hacp:open", "hacp:portal"}:
@@ -66,8 +99,7 @@ class PortalConnections(NativeConnections):
         url, notice = None, ""
         try:
             if action == "hacp:login":
-                url = await asyncio.to_thread(self.runtime.start, identity)
-                notice = "點選「前往 Google 帳號登入」，登入後回到這裡點「重新整理」，再確認連接此帳號。"
+                notice = "請點「連接 Google 帳號」直接開啟登入頁，登入後回到 Slack 確認帳號。"
             elif action == "hacp:confirm":
                 await asyncio.to_thread(self.runtime.confirm, identity, value)
                 notice = "Google 帳號已連接。請開啟 Manage Connections，使用同一帳號授權 Jira。"
