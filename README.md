@@ -4,7 +4,7 @@ Hermes plugin for native Slack account linking and per-user AWS Bedrock AgentCor
 
 ## Versioned MVP
 
-The planned first MVP release is `v0.1.0`. Once published, pin plugin source to that Git tag or use
+The first MVP release is `v0.1.0`. Pin plugin source to that Git tag or use
 `ghcr.io/sh1un/hermes-agentcore-plugin:v0.1.0` for the bundled Hermes runtime.
 Prefer the published digest for immutable deployments.
 See [release notes and limitations](docs/releases/v0.1.0.md).
