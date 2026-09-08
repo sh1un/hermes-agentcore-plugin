@@ -54,13 +54,18 @@ class PortalConnections(NativeConnections):
         buttons = []
         if status["state"] == "signed_out":
             url = await asyncio.to_thread(self.runtime.login_url, identity)
-            buttons.append(button("連接 Google 帳號", "open", url=url))
+            connect = button("連接 Google 帳號", "open", url=url)
+            connect["style"] = "primary"
+            buttons.append(connect)
         if status["state"] == "confirm_identity":
             b = button("確認連接此帳號", "confirm", status["attempt"])
             b["style"] = "primary"
             buttons.append(b)
         buttons.append(button("更新狀態", "refresh"))
-        buttons.append(button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout"))
+        signout = button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout")
+        if status["state"] == "signed_in":
+            signout["style"] = "danger"
+        buttons.append(signout)
         blocks.append({"type": "actions", "elements": buttons})
         blocks.append({"type": "actions", "elements": [button("Manage Connections", "portal", url=self.runtime.s["portal_url"])]})
         blocks.append({"type": "context", "elements": [{"type": "plain_text", "text":

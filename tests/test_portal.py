@@ -115,6 +115,7 @@ class PortalTests(unittest.TestCase):
             buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
             connect = next(b for b in buttons if b["text"]["text"] == "連接 Google 帳號")
             self.assertEqual(connect["action_id"], "hacp:open")
+            self.assertEqual(connect["style"], "primary")
             self.assertNotIn("agent_prompt", connect)
             url = connect["url"]
             await ui.home(client, self.a)
@@ -143,6 +144,12 @@ class PortalTests(unittest.TestCase):
                 self.r.confirm(self.b, confirm["value"])
             self.r.confirm(self.a, confirm["value"])
             self.assertEqual(self.r.status(self.a)["state"], "signed_in")
+            await ui.home(client, self.a)
+            blocks = client.views_publish.call_args.kwargs["view"]["blocks"]
+            buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
+            signout = next(b for b in buttons if b["action_id"] == "hacp:signout")
+            self.assertEqual(signout["style"], "danger")
+            self.assertEqual(signout["text"]["text"], "登出此 Plugin")
         asyncio.run(scenario())
 
     def test_direct_login_expiry_and_cancellation(self):
