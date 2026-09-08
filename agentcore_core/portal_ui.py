@@ -15,14 +15,14 @@ class PortalConnections(NativeConnections):
             return b
         blocks = [{"type": "header", "text": {"type": "plain_text", "text": "AgentCore Connections"}},
                   {"type": "section", "text": {"type": "plain_text", "text":
-                    notice or "Sign in here, then manage third-party connections in the consent portal. Use the same account in both places."}},
+                    notice or "先連接你的 Google 帳號，讓 Plugin 知道這個 Slack 身份對應哪個登入帳號，再到 Consent portal 使用同一帳號授權 Jira。"}},
                   {"type": "section", "text": {"type": "plain_text", "text":
                     status["state"] + (": " + status["label"] if status.get("label") else "")}}]
-        buttons = [button("Sign in", "login"), button("Refresh", "refresh"), button("Sign out here", "signout")]
+        buttons = [button("連接 Google 帳號", "login"), button("重新整理", "refresh"), button("登出此 Plugin", "signout")]
         if url:
-            buttons.append(button("Open sign-in", "open", url=url))
+            buttons.append(button("前往 Google 帳號登入", "open", url=url))
         if status["state"] == "confirm_identity":
-            b = button("Confirm this account", "confirm", status["attempt"])
+            b = button("確認連接此帳號", "confirm", status["attempt"])
             b["confirm"] = {"title": {"type": "plain_text", "text": "Link your account?"},
                 "text": {"type": "plain_text", "text": "Only confirm if this is your account: " + status["label"]},
                 "confirm": {"type": "plain_text", "text": "Confirm"},
@@ -31,7 +31,7 @@ class PortalConnections(NativeConnections):
         blocks.append({"type": "actions", "elements": buttons})
         blocks.append({"type": "actions", "elements": [button("Manage Connections", "portal", url=self.runtime.s["portal_url"])]})
         blocks.append({"type": "context", "elements": [{"type": "plain_text", "text":
-            "Signed in does not mean Jira is connected. Sign out here does not revoke portal or provider grants."}]})
+            "連接 Google 帳號不代表已授權 Jira。登出此 Plugin 不會撤銷 Consent portal 或第三方服務的授權。"}]})
         await client.views_publish(user_id=identity.member, view={"type": "home", "blocks": blocks})
 
     async def async_process(self, *, req, resp, next):
@@ -67,10 +67,10 @@ class PortalConnections(NativeConnections):
         try:
             if action == "hacp:login":
                 url = await asyncio.to_thread(self.runtime.start, identity)
-                notice = "Open sign-in. After login, return here and click Refresh to confirm your account."
+                notice = "點選「前往 Google 帳號登入」，登入後回到這裡點「重新整理」，再確認連接此帳號。"
             elif action == "hacp:confirm":
                 await asyncio.to_thread(self.runtime.confirm, identity, value)
-                notice = "Signed in. Open Manage Connections and use the same account."
+                notice = "Google 帳號已連接。請開啟 Manage Connections，使用同一帳號授權 Jira。"
             elif action == "hacp:signout":
                 await asyncio.to_thread(self.runtime.signout, identity)
                 notice = "Signed out here. Existing portal and provider grants were not revoked."
