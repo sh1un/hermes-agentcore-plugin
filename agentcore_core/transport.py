@@ -1,10 +1,9 @@
 """One MCP connection per invocation. No shared auth headers or model callbacks."""
 import asyncio
-from datetime import timedelta
 
 
 async def _call(provider, token, tool, arguments):
-    import httpx
+    import httpx2 as httpx
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
@@ -12,7 +11,7 @@ async def _call(provider, token, tool, arguments):
                                  timeout=20, follow_redirects=False) as http:
         async with streamable_http_client(provider.endpoint, http_client=http) as streams:
             async with ClientSession(streams[0], streams[1],
-                                     read_timeout_seconds=timedelta(seconds=20)) as session:
+                                     read_timeout_seconds=20) as session:
                 await session.initialize()
                 result = await session.call_tool(tool, arguments)
                 return result.model_dump(mode="json", exclude_none=True)
