@@ -1,0 +1,4 @@
+name: agentcore
+version: "0.1.0"
+description: "Experimental AgentCore integration foundation and compatibility diagnostics"
+author: sh1un
