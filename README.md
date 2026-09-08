@@ -4,11 +4,13 @@ Experimental Hermes plugin for per-user AWS AgentCore integration without OpenAB
 
 ## Current status
 
-Implemented: a diagnostic CLI entry point and a dependency-free connection metadata core
-with subject isolation, generation checks, restart recovery and a local disconnect gate
+Implemented PoC: native Slack Home Connect, confirmation modal, callback server,
+per-user AWS token exchange, read-only Jira MCP dispatch and local Disconnect
 
-Not yet implemented: native Slack connection UI, AWS OAuth exchange, callback server,
-MCP transport and remote revocation. This is not ready for live authorization
+Provider-side revocation and AgentCore Gateway/Policy are not implemented.
+Live Slack/AWS validation and compatibility with the existing image remain unverified
+
+[Installation and acceptance test](docs/installation.md)
 
 The reference image tag has not yet been mapped to source. See the
 [compatibility audit](docs/compatibility-audit.md) for verified APIs and gaps
@@ -20,8 +22,8 @@ python3 -m unittest discover -s tests -v
 ```
 
 Directory plugin layout uses `plugin.yaml` and `__init__.py` with `register(ctx)`
-The only registered host command is `hermes agentcore doctor`
-No model tools or OAuth actions are registered at this stage
+The diagnostic command is `hermes agentcore doctor`. Configured installations also
+register `agentcore_jira_read`. OAuth actions run only through native Slack UI
 
 The host must authenticate Slack events before constructing a `SlackIdentity`
 ID syntax validation is not authentication

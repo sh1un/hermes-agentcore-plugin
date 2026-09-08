@@ -1,0 +1,4 @@
+boto3==1.43.89
+mcp==1.26.0
+slack-bolt==1.30.0
+aiohttp==3.14.3

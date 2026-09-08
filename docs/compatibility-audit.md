@@ -1,6 +1,6 @@
 # Compatibility Audit
 
-Status: Partial，native OAuth 尚未接通
+Status: 已完成 PoC 接線，live Slack/AWS 與既有 image 相容性尚未驗證
 
 ## Evidence
 
@@ -18,12 +18,16 @@ Status: Partial，native OAuth 尚未接通
 
 ## Implementation Boundary
 
-目前實作 identity syntax、SQLite metadata lifecycle、generation、local disconnect gate 與 diagnostic CLI
+已實作 native Slack middleware、Boto3 Identity、callback、confirmation 與唯讀 MCP dispatch
+
+額外確認 `register_platform_handler` 可取得 Slack AsyncApp，Plugin 使用 middleware 在 conversation listener 前消耗 native events
+
+工具身份直接讀取 `gateway/session_context.py` 的 task-local ContextVars，避開 `get_session_env` 的 process environment fallback，`_VAR_MAP` 是需要追蹤的 private API dependency
 
 `complete_verified` 僅供未來可信 callback service 使用，本身不驗證 OAuth，不能直接暴露成工具
 
 初版 Store 限單 process、單 owner，dispatch 持有 lock 至 operation 完成，Disconnect 會等待已放行的 operation，operation 必須有 timeout
 
-尚未實作 Slack App Home、AWS token exchange、callback HTTP endpoint、provider revoke 或 MCP transport，因此不能部署後直接 Connect
+Provider revoke 與 Gateway/Policy 尚未實作，local Disconnect 不宣稱撤銷第三方 grant
 
-下一步先確認 image source provenance，以及 post-authorization identity 與 native interaction extension，再接通 provider backend
+安裝前仍須確認 image source provenance，並使用隔離的 Slack App 驗證兩個使用者的實際授權

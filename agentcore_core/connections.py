@@ -7,6 +7,7 @@ This type validates ID syntax, not Slack authenticity. One Store owns one DB.
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import fcntl
 import re
 import sqlite3
 import threading
@@ -48,6 +49,12 @@ class Store:
         self._lock = threading.RLock()
         # Caller supplies a dedicated, trusted directory. Never store tokens here.
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._owner_fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(self._owner_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(self._owner_fd)
+            raise RuntimeError("Connection store already has an owner") from None
         fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         os.close(fd)
         os.chmod(path, 0o600)
@@ -120,3 +127,6 @@ class Store:
     def close(self):
         with self._lock:
             self.db.close()
+            if self._owner_fd is not None:
+                os.close(self._owner_fd)
+                self._owner_fd = None

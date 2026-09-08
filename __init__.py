@@ -1,4 +1,4 @@
-"""Hermes directory plugin entry point. No OAuth tools are registered."""
+"""Hermes directory plugin entry point. OAuth is native-only."""
 
 
 def register(ctx):
@@ -6,9 +6,9 @@ def register(ctx):
         parser.add_argument("action", choices=["doctor"])
 
     def doctor(args):
-        print("AgentCore foundation loaded. Live OAuth and Slack UI are not enabled.")
-        print("Required: authenticated per-invocation identity and native Slack event bridge.")
-        print("Do not use pre_gateway_dispatch as a post-authorization boundary.")
+        print("AgentCore plugin: native Slack Connections and read-only Jira integration.")
+        print("Requires register_platform_handler and task-local Slack identity context.")
+        print("Configure plugins.entries.agentcore.settings.config_file to enable.")
 
     ctx.register_cli_command(
         name="agentcore",
@@ -16,3 +16,7 @@ def register(ctx):
         setup_fn=setup,
         handler_fn=doctor,
     )
+    config_file = ctx.get_config("config_file")
+    if config_file:
+        from .agentcore_core.host import enable
+        enable(ctx, config_file)

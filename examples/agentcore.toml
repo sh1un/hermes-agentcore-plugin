@@ -1,0 +1,12 @@
+region = "ap-southeast-1"
+workload = "hermes-example"
+return_url = "https://connections.example.com/oauth/agentcore/callback"
+data_dir = "/opt/hermes-agentcore-state"
+callback_port = 8849
+workspace_ids = ["TEXAMPLE"]
+
+[providers.atlassian]
+credential_provider = "example-rovo-dcr"
+endpoint = "https://mcp.atlassian.com/v1/mcp/authv2"
+scopes = ["read:me", "read:account", "read:jira-work", "offline_access"]
+resources = ["https://mcp.atlassian.com/v1/mcp/authv2"]

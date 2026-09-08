@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-agentcore-plugin"
+version = "0.1.0"
+description = "Native Slack authorization and per-user AgentCore credentials for Hermes"
+requires-python = ">=3.11"
+dependencies = ["boto3==1.43.89", "mcp==1.26.0", "slack-bolt==1.30.0", "aiohttp==3.14.3"]
+
+[tool.setuptools.packages.find]
+include = ["agentcore_core*"]

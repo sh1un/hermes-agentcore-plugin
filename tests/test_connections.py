@@ -22,6 +22,13 @@ class LifecycleTests(unittest.TestCase):
         self.store.complete_verified(person, "jira", generation)
         return generation
 
+    def test_second_owner_cannot_invalidate_pending_session(self):
+        generation = self.store.begin(self.a, "jira").generation
+        with self.assertRaises(RuntimeError):
+            Store(self.path, "test", frozenset({"jira"}))
+        self.store.complete_verified(self.a, "jira", generation)
+        self.assertEqual(self.store.status(self.a, "jira").state, "connected")
+
     def test_identity_isolation_and_disconnect(self):
         ga, gb = self.connect(self.a), self.connect(self.b)
         self.store.disconnect(self.a, "jira")
@@ -73,7 +80,8 @@ class LifecycleTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("plugin", Path(__file__).parents[1] / "__init__.py")
         plugin = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(plugin)
-        host = Mock(spec=["register_cli_command"])
+        host = Mock(spec=["register_cli_command", "get_config"])
+        host.get_config.return_value = None
         plugin.register(host)
         host.register_cli_command.assert_called_once()
         self.assertEqual(host.register_cli_command.call_args.kwargs["name"], "agentcore")
