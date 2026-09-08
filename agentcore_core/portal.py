@@ -12,6 +12,11 @@ from urllib.parse import urlencode, urlsplit
 
 from .connections import SlackIdentity
 from .runtime import Provider
+from .transport import diagnostic
+
+
+GATEWAY_FAILURE = {"error": "gateway_request_failed", "message":
+    "Gateway request failed. Cause is unconfirmed. Do not infer an authorization failure or request reconnection. Ask the operator to inspect gateway_diagnostic logs."}
 
 
 def https_url(value, path=None):
@@ -228,7 +233,8 @@ class PortalRuntime:
                         "accesstoken", "refreshtoken", "idtoken", "state=", "?code=", "&code=",
                         "id_token", "code_verifier", "elicitation", "oauth2/authorize", "oauth/authorize",
                         "consent-portal", "confirmation_code", "HAC-"))):
-                return {"error": "gateway_request_failed", "message": "Check sign-in and Connections in the app Home"}
+                diagnostic("filter", "rejected")
+                return dict(GATEWAY_FAILURE)
             with self.lock:
                 self._purge()
                 # Identity equality is insufficient after re-login to another account.
@@ -236,7 +242,7 @@ class PortalRuntime:
                     return {"error": "sign_in_required", "message": "Use the Slack app Home"}
                 return {"result": value}
         except Exception:
-            return {"error": "gateway_request_failed", "message": "Check sign-in and Connections in the app Home"}
+            return dict(GATEWAY_FAILURE)
         finally:
             if admitted:
                 with self.lock:
