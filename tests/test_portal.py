@@ -134,6 +134,9 @@ class PortalTests(unittest.TestCase):
             blocks = client.views_publish.call_args.kwargs["view"]["blocks"]
             buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
             confirm = next(b for b in buttons if b["action_id"] == "hacp:confirm")
+            self.assertEqual(confirm["style"], "primary")
+            refresh = next(b for b in buttons if b["action_id"] == "hacp:refresh")
+            self.assertEqual(refresh["text"]["text"], "更新狀態")
             self.assertNotEqual(confirm["value"], state)
             self.assertNotIn("confirm", confirm)  # One explicit confirmation, no second dialog.
             with self.assertRaises(ValueError):

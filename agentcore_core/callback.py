@@ -30,7 +30,7 @@ def start_callback(runtime, port, portal=False, on_complete=None):
                             on_complete(identity)
                         except Exception:
                             pass  # UI delivery failure must not undo a consumed callback.
-                    body = b"Login received. Return to Slack app Home and confirm your account. If the page has not updated, use the backup refresh button."
+                    body = b"Login received. Return to Slack app Home and confirm your account. If the page has not updated, use the refresh button."
                 else:
                     code = runtime.callback(query["session_id"][0], query["state"][0])
                     body = ("Authorization ready. Return to the app Home, select Enter code, "

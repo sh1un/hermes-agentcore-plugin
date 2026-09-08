@@ -57,8 +57,9 @@ class PortalConnections(NativeConnections):
             buttons.append(button("連接 Google 帳號", "open", url=url))
         if status["state"] == "confirm_identity":
             b = button("確認連接此帳號", "confirm", status["attempt"])
+            b["style"] = "primary"
             buttons.append(b)
-        buttons.append(button("更新狀態（備用）", "refresh"))
+        buttons.append(button("更新狀態", "refresh"))
         buttons.append(button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout"))
         blocks.append({"type": "actions", "elements": buttons})
         blocks.append({"type": "actions", "elements": [button("Manage Connections", "portal", url=self.runtime.s["portal_url"])]})
