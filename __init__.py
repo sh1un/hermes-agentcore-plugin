@@ -6,7 +6,8 @@ def register(ctx):
         parser.add_argument("action", choices=["doctor"])
 
     def doctor(args):
-        print("AgentCore plugin: native Slack Connections and read-only Jira integration.")
+        print("AgentCore plugin: native Cognito login, Consent portal entry and Gateway Jira reads.")
+        print("Portal mode requires mode=portal. Legacy direct configurations remain supported.")
         print("Requires register_platform_handler and task-local Slack identity context.")
         print("Configure plugins.entries.agentcore.settings.config_file to enable.")
 

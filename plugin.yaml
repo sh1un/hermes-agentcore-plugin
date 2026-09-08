@@ -1,4 +1,4 @@
 name: agentcore
 version: "0.1.0"
-description: "Native Slack connections and per-user AgentCore-backed Jira reads"
+description: "Native Slack sign-in, Consent portal entry and per-user Gateway Jira reads"
 author: sh1un

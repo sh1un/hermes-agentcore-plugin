@@ -4,11 +4,19 @@ Experimental Hermes plugin for per-user AWS AgentCore integration without OpenAB
 
 ## Current status
 
-Implemented PoC: native Slack Home Connect, confirmation modal, callback server,
-per-user AWS token exchange, read-only Jira MCP dispatch and local Disconnect
+Consent portal mode: native Cognito login with PKCE, Slack account confirmation,
+portal entry, and per-user read-only Jira dispatch through AgentCore Gateway
 
-Provider-side revocation and AgentCore Gateway/Policy are not implemented.
-Live Slack/AWS validation and compatibility with the existing image remain unverified
+No OpenAB dependency. No OAuth artifacts are exposed by authorization tooling to
+the LLM. Cognito access tokens live only in memory until expiry or local sign-out.
+Restart requires sign-in again. Provider grants are not revoked by local sign-out
+
+Live Slack/AWS validation, Gateway Policy outcomes and compatibility with the
+existing Suma image remain unverified. Tests are not a production acceptance result
+
+[Consent portal design](docs/consent-portal.md) and [portal setup](docs/portal-installation.md)
+
+The original direct Rovo PoC remains available for existing configurations
 
 [Installation and acceptance test](docs/installation.md)
 
@@ -28,9 +36,8 @@ register `agentcore_jira_read`. OAuth actions run only through native Slack UI
 The host must authenticate Slack events before constructing a `SlackIdentity`
 ID syntax validation is not authentication
 
-The SQLite store requires a dedicated trusted directory and one process owner
-It stores connection state only, never provider tokens. Local disconnect does
-not imply provider-side revocation
+Legacy direct mode uses a dedicated SQLite metadata store. Portal mode does not
+use that store and never imports legacy connection state automatically
 
 ## Design
 

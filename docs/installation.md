@@ -1,5 +1,8 @@
 # Installation and Validation
 
+For the new Consent portal integration use [portal setup](portal-installation.md).
+This page documents the original legacy direct mode only.
+
 This single-instance Linux/macOS PoC implements native Slack Connect, confirmation,
 Status, local Disconnect and two read-only Jira operations. Provider-side revocation,
 GitHub, Confluence and AgentCore Gateway/Policy are not implemented.

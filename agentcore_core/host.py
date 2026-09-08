@@ -58,6 +58,12 @@ def load_settings(path):
 
 
 def enable(ctx, config_file):
+    with open(config_file, "rb") as f:
+        raw = tomllib.load(f)
+    if raw.get("mode") == "portal":
+        return enable_portal(ctx, raw)
+    if raw.get("mode", "direct") != "direct":
+        raise ValueError("Unknown integration mode")
     if not callable(getattr(ctx, "register_platform_handler", None)):
         raise RuntimeError("Hermes register_platform_handler is required")
     from gateway import session_context as sc
@@ -106,5 +112,45 @@ def enable(ctx, config_file):
                 "required": ["connection", "tool", "arguments"], "properties": {
                     "connection": {"type": "string", "enum": list(runtime.providers)},
                     "tool": {"type": "string", "enum": ["getAccessibleAtlassianResources", "getJiraIssue"]},
+                    "arguments": {"type": "object", "description": "Empty for resources, or cloudId and issueIdOrKey for an issue"}}}})
+    return runtime
+
+
+def enable_portal(ctx, raw):
+    from .portal import validate_settings, Cognito, PortalRuntime
+    from .portal_ui import PortalConnections
+    from .callback import start_callback
+    from gateway import session_context as sc
+    if not callable(getattr(ctx, "register_platform_handler", None)):
+        raise RuntimeError("Hermes native platform handler API required")
+    for key in ("HERMES_SESSION_PLATFORM", "HERMES_SESSION_SCOPE_ID", "HERMES_SESSION_USER_ID", "HERMES_CRON_SESSION"):
+        if key not in getattr(sc, "_VAR_MAP", {}):
+            raise RuntimeError("Hermes task-local identity API is incompatible")
+    settings = validate_settings(raw)
+    runtime = PortalRuntime(settings, Cognito(settings), call_mcp)
+    servers = []
+    def wire(app, adapter):
+        if servers:
+            raise RuntimeError("Only one Slack adapter per plugin instance is supported")
+        servers.append(start_callback(runtime, settings.get("callback_port", 8849), portal=True))
+        app.use(PortalConnections(runtime, settings["workspace_ids"]))
+    def shutdown():
+        for server in servers:
+            server.shutdown()
+            server.server_close()
+        runtime.close()
+    atexit.register(shutdown)
+    ctx.register_platform_handler("slack", wire)
+    def execute(args, **kwargs):
+        try:
+            if not isinstance(args, dict) or set(args) != {"tool", "arguments"}:
+                return json.dumps({"error": "invalid_arguments"})
+            return json.dumps(runtime.execute(task_identity(settings["workspace_ids"]), args["tool"], args["arguments"]))
+        except Exception:
+            return json.dumps({"error": "identity_unavailable"})
+    ctx.register_tool(name="agentcore_jira_read", toolset="agentcore", handler=execute,
+        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. Manage sign-in and Connections in Slack app Home.",
+            "parameters": {"type": "object", "additionalProperties": False, "required": ["tool", "arguments"],
+                "properties": {"tool": {"type": "string", "enum": list(settings["tools"])},
                     "arguments": {"type": "object", "description": "Empty for resources, or cloudId and issueIdOrKey for an issue"}}}})
     return runtime

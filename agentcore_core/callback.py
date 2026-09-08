@@ -4,7 +4,7 @@ from urllib.parse import urlsplit, parse_qs
 import threading
 
 
-def start_callback(runtime, port):
+def start_callback(runtime, port, portal=False):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -16,14 +16,20 @@ def start_callback(runtime, port):
         def do_GET(self):
             try:
                 url = urlsplit(self.path)
-                if url.path != "/oauth/agentcore/callback" or len(self.path) > 8192:
+                path = "/oauth/cognito/callback" if portal else "/oauth/agentcore/callback"
+                if url.path != path or len(self.path) > 8192:
                     raise ValueError()
                 query = parse_qs(url.query, max_num_fields=8)
-                if set(query) != {"session_id", "state"} or any(len(v) != 1 for v in query.values()):
+                expected = {"code", "state"} if portal else {"session_id", "state"}
+                if set(query) != expected or any(len(v) != 1 for v in query.values()):
                     raise ValueError()
-                code = runtime.callback(query["session_id"][0], query["state"][0])
-                body = ("Authorization ready. Return to the app Home, select Enter code, "
-                        "and submit this one-time code within ten minutes:\n\n" + code).encode()
+                if portal:
+                    runtime.callback(query["state"][0], query["code"][0])
+                    body = b"Login received. Return to Slack app Home, click Refresh and confirm your account."
+                else:
+                    code = runtime.callback(query["session_id"][0], query["state"][0])
+                    body = ("Authorization ready. Return to the app Home, select Enter code, "
+                            "and submit this one-time code within ten minutes:\n\n" + code).encode()
                 status = 200
             except Exception:
                 status, body = 400, b"Authorization invalid or expired. Start again from the app Home."

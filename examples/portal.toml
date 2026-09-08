@@ -1,0 +1,15 @@
+mode = "portal"
+workspace_ids = ["TEXAMPLE"]
+issuer = "https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_EXAMPLE"
+cognito_domain = "https://example.auth.ap-southeast-1.amazoncognito.com"
+# Public client with no secret, code flow, Gateway scope and callback allowed
+client_id = "exampleclientid"
+return_url = "https://hermes-login.example.com/oauth/cognito/callback"
+portal_url = "https://example.consent-portal.bedrock-agentcore.ap-southeast-1.amazonaws.com"
+gateway_url = "https://example.gateway.bedrock-agentcore.ap-southeast-1.amazonaws.com/mcp"
+callback_port = 8849
+
+[tools]
+# Replace with exact names from your Gateway tools/list, not guessed target IDs
+getAccessibleAtlassianResources = "JiraRovoTarget___getAccessibleAtlassianResources"
+getJiraIssue = "JiraRovoTarget___getJiraIssue"
