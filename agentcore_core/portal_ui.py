@@ -61,7 +61,7 @@ class PortalConnections(NativeConnections):
             b = button("確認連接此帳號", "confirm", status["attempt"])
             b["style"] = "primary"
             buttons.append(b)
-        buttons.append(button("更新狀態", "refresh"))
+        buttons.append(button("重新整理", "refresh"))
         signout = button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout")
         if status["state"] == "signed_in":
             signout["style"] = "danger"
