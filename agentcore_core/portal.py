@@ -50,7 +50,7 @@ def validate_settings(s):
     return s
 
 
-@dataclass(repr=False)
+@dataclass(frozen=True, repr=False)
 class Login:
     sub: str
     label: str
@@ -127,6 +127,8 @@ class PortalRuntime:
         self.s, self.backend, self.transport, self.clock = settings, backend, transport, clock
         self.lock = threading.RLock()
         self.pending, self.logins = {}, {}
+        # Counts survive signout so reconnecting cannot bypass in-flight limits.
+        self.active_requests = {}
 
     def _identity(self, identity):
         if not isinstance(identity, SlackIdentity) or identity.workspace not in self.s["workspace_ids"]:
@@ -199,6 +201,7 @@ class PortalRuntime:
                 or set(arguments) != allowed[tool]
                 or any(not isinstance(v, str) or not v or len(v) > 256 for v in arguments.values())):
             return {"error": "invalid_arguments"}
+        admitted = False
         try:
             self._identity(identity)
             with self.lock:
@@ -206,19 +209,39 @@ class PortalRuntime:
                 login = self.logins.get(identity.subject)
                 if login is None:
                     return {"error": "sign_in_required", "message": "Use the Slack app Home"}
-                provider = Provider("gateway", "", self.s["gateway_url"], ())
-                value = self.transport(provider, login.token, self.s["tools"][tool], arguments)
-                encoded = json.dumps(value)
-                if len(encoded) > 65536:
-                    return {"error": "result_too_large"}
-                # Only successful tool results cross the model boundary.
-                if (not isinstance(value, dict) or value.get("isError")
-                        or any(x.lower() in encoded.lower() for x in (
-                            login.token, "authorizationurl", "authorization_url", "access_token", "refresh_token",
-                            "accesstoken", "refreshtoken", "idtoken", "state=", "?code=", "&code=",
-                            "id_token", "code_verifier", "elicitation", "oauth2/authorize", "oauth/authorize",
-                            "consent-portal", "confirmation_code", "HAC-"))):
-                    return {"error": "gateway_request_failed", "message": "Check sign-in and Connections in the app Home"}
+                count = self.active_requests.get(identity.subject, 0)
+                if count >= 2 or sum(self.active_requests.values()) >= 32:
+                    return {"error": "busy", "message": "Retry after the current request finishes"}
+                self.active_requests[identity.subject] = count + 1
+                admitted = True
+            # Never hold the shared identity lock over remote tool execution.
+            # The Login object is a request-local snapshot, not a mutable header cache.
+            provider = Provider("gateway", "", self.s["gateway_url"], ())
+            value = self.transport(provider, login.token, self.s["tools"][tool], dict(arguments))
+            encoded = json.dumps(value)
+            if len(encoded) > 65536:
+                return {"error": "result_too_large"}
+            # Only successful tool results cross the model boundary.
+            if (not isinstance(value, dict) or value.get("isError")
+                    or any(x.lower() in encoded.lower() for x in (
+                        login.token, "authorizationurl", "authorization_url", "access_token", "refresh_token",
+                        "accesstoken", "refreshtoken", "idtoken", "state=", "?code=", "&code=",
+                        "id_token", "code_verifier", "elicitation", "oauth2/authorize", "oauth/authorize",
+                        "consent-portal", "confirmation_code", "HAC-"))):
+                return {"error": "gateway_request_failed", "message": "Check sign-in and Connections in the app Home"}
+            with self.lock:
+                self._purge()
+                # Identity equality is insufficient after re-login to another account.
+                if self.logins.get(identity.subject) is not login:
+                    return {"error": "sign_in_required", "message": "Use the Slack app Home"}
                 return {"result": value}
         except Exception:
             return {"error": "gateway_request_failed", "message": "Check sign-in and Connections in the app Home"}
+        finally:
+            if admitted:
+                with self.lock:
+                    remaining = self.active_requests[identity.subject] - 1
+                    if remaining:
+                        self.active_requests[identity.subject] = remaining
+                    else:
+                        del self.active_requests[identity.subject]

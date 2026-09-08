@@ -16,6 +16,11 @@ existing Suma image remain unverified. Tests are not a production acceptance res
 
 [Consent portal design](docs/consent-portal.md) and [portal setup](docs/portal-installation.md)
 
+Portal tool dispatch now uses immutable per-request login snapshots, bounded
+concurrency and stale-result rejection after sign-out, expiry or account change.
+See [requester dispatch design and native MCP limitations](docs/requester-dispatch.md).
+This does not cancel already admitted upstream requests or add generic MCP tools.
+
 The original direct Rovo PoC remains available for existing configurations
 
 [Installation and acceptance test](docs/installation.md)

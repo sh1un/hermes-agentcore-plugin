@@ -26,7 +26,9 @@ Status: 已完成 PoC 接線，live Slack/AWS 與既有 image 相容性尚未驗
 
 `complete_verified` 僅供未來可信 callback service 使用，本身不驗證 OAuth，不能直接暴露成工具
 
-初版 Store 限單 process、單 owner，dispatch 持有 lock 至 operation 完成，Disconnect 會等待已放行的 operation，operation 必須有 timeout
+Legacy direct mode 的 Store 限單 process、單 owner，dispatch 持有 lock 至 operation 完成，Disconnect 會等待已放行的 operation
+Portal mode 的 tool dispatch 已改為 request-local 登入快照，network I/O 不持有全域 lock，登出後拒絕舊结果
+詳見 [Requester dispatch](requester-dispatch.md)，本次不改 Cognito callback exchange 的序列化行為
 
 Provider revoke 與 Gateway/Policy 尚未實作，local Disconnect 不宣稱撤銷第三方 grant
 
