@@ -42,11 +42,11 @@ async def _call(provider, token, tool, arguments):
                                          read_timeout_seconds=20) as session:
                     stage = "initialize"
                     initialized = await session.initialize()
-                    diagnostic(stage, "ok", protocol=initialized.protocolVersion)
+                    diagnostic(stage, "ok", protocol=initialized.protocol_version)
                     stage = "call_tool"
                     result = await session.call_tool(tool, arguments)
-                    diagnostic(stage, "failed" if result.isError else "ok")
-                    return result.model_dump(mode="json", exclude_none=True)
+                    diagnostic(stage, "failed" if result.is_error else "ok")
+                    return result.model_dump(mode="json", by_alias=True, exclude_none=True)
     except BaseException as error:
         # Task groups can wrap RPC errors. Keep only integer codes, never messages/data.
         pending = [error]

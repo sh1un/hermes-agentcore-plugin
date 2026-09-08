@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
+from mcp import types
 
 from agentcore_core.transport import _call, diagnostic
 
@@ -22,9 +23,10 @@ class TransportTests(unittest.TestCase):
     def test_initialize_and_call_are_distinguishable_without_credentials(self):
         provider = Mock(endpoint="https://gateway.example/mcp")
         session = AsyncMock()
-        session.initialize.return_value = Mock(protocolVersion="2025-11-25")
-        result = Mock(isError=False)
-        result.model_dump.return_value = {"content": [], "isError": False}
+        session.initialize.return_value = types.InitializeResult(
+            protocol_version="2025-11-25", capabilities=types.ServerCapabilities(),
+            server_info=types.Implementation(name="test", version="1"))
+        result = types.CallToolResult(content=[], is_error=False)
         session.call_tool.return_value = result
 
         @asynccontextmanager
@@ -42,6 +44,11 @@ class TransportTests(unittest.TestCase):
             self.assertIn("call_tool", str(logs.output))
             self.assertIn("2025-11-25", str(logs.output))
             self.assertNotIn("private", str(logs.output))
+            session.call_tool.return_value = types.CallToolResult(content=[], is_error=True)
+            with self.assertLogs("agentcore.gateway"):
+                failed = asyncio.run(_call(provider, "private-token", "tool", {}))
+            self.assertTrue(failed["isError"])
+            self.assertNotIn("is_error", failed)
             session.initialize.side_effect = RuntimeError("private-token https://secret?code=private")
             session.call_tool.reset_mock()
             with self.assertLogs("agentcore.gateway") as logs, self.assertRaises(RuntimeError):
