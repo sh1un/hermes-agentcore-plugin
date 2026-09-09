@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import hmac
 import json
+import logging
 import re
 import secrets
 import threading
@@ -13,6 +14,7 @@ from urllib.parse import urlencode, urlsplit
 from .connections import SlackIdentity
 from .runtime import Provider
 from .transport import diagnostic
+from .service_identity import ServiceOwner, validate_services
 
 
 GATEWAY_FAILURE = {"error": "gateway_request_failed", "message":
@@ -52,6 +54,7 @@ def validate_settings(s):
     if not 1 <= s.get("callback_port", 8849) <= 65535:
         raise ValueError("Invalid callback port")
     s["scope"] = "openid email profile agentcore/gateway.invoke"
+    validate_services(s)
     return s
 
 
@@ -138,6 +141,29 @@ class PortalRuntime:
     def _identity(self, identity):
         if not isinstance(identity, SlackIdentity) or identity.workspace not in self.s["workspace_ids"]:
             raise ValueError("Untrusted identity")
+        if isinstance(identity, ServiceOwner):
+            cfg = self.s.get("service_accounts", {}).get(identity.service)
+            if (not cfg or cfg["workspace_id"] != identity.workspace
+                    or identity.member not in cfg["admin_members"]):
+                raise ValueError("Service administrator required")
+
+    def service_owner(self, actor, name):
+        if type(actor) is not SlackIdentity:
+            raise ValueError("Slack administrator required")
+        owner = ServiceOwner(actor.workspace, actor.member, name)
+        self._identity(owner)
+        return owner
+
+    def managed_services(self, actor):
+        self._identity(actor)
+        return [name for name, cfg in self.s.get("service_accounts", {}).items()
+                if cfg["workspace_id"] == actor.workspace and actor.member in cfg["admin_members"]]
+
+    def _expected_login(self, identity, login):
+        if isinstance(identity, ServiceOwner):
+            self._identity(identity)
+            if login.sub != self.s["service_accounts"][identity.service]["expected_sub"]:
+                raise ValueError("Wrong service account")
 
     def _purge(self):
         now = self.clock()
@@ -177,6 +203,7 @@ class PortalRuntime:
                 raise ValueError("Invalid login")
             # Consume the callback state before network I/O. No callback replay.
             login = self.backend.exchange(attempt, code)
+            self._expected_login(attempt.identity, login)
             attempt.login = login
             # Independent nonce for Slack confirmation, not the OAuth state.
             self.pending[secrets.token_urlsafe(32)] = attempt
@@ -199,40 +226,64 @@ class PortalRuntime:
             a = self.pending.get(key)
             if a is None or a.identity != identity or a.login is None:
                 raise ValueError("Invalid confirmation")
+            self._expected_login(identity, a.login)
             self.logins[identity.subject] = a.login
             del self.pending[key]
+            if isinstance(identity, ServiceOwner):
+                self.pending = {k: a for k, a in self.pending.items() if a.identity.subject != identity.subject}
 
     def signout(self, identity):
         self._identity(identity)
         with self.lock:
             self.logins.pop(identity.subject, None)
-            self.pending = {k: a for k, a in self.pending.items() if a.identity != identity}
+            self.pending = {k: a for k, a in self.pending.items() if a.identity.subject != identity.subject}
 
     def close(self):
         with self.lock:
             self.pending.clear()
             self.logins.clear()
 
-    def execute(self, identity, tool, arguments):
+    def execute(self, identity, tool, arguments, *, channel_id=None):
         allowed = {"getAccessibleAtlassianResources": set(), "getJiraIssue": {"cloudId", "issueIdOrKey"}}
         if (not isinstance(tool, str) or tool not in allowed or not isinstance(arguments, dict)
                 or set(arguments) != allowed[tool]
                 or any(not isinstance(v, str) or not v or len(v) > 256 for v in arguments.values())):
             return {"error": "invalid_arguments"}
         admitted = False
+        principal = None
+        missing = {"error": "sign_in_required", "message": "Use the Slack app Home"}
         try:
+            if type(identity) is not SlackIdentity:
+                raise ValueError("Task requester required")
             self._identity(identity)
+            principal = identity.subject
+            expected_sub = None
+            if self.s.get("service_accounts"):
+                if not isinstance(channel_id, str) or not re.fullmatch(r"[CGD][A-Z0-9]+", channel_id):
+                    return {"error": "identity_unavailable"}
+                for name, cfg in self.s["service_accounts"].items():
+                    if cfg["workspace_id"] == identity.workspace and channel_id in cfg["channel_ids"]:
+                        if identity.member not in cfg["allowed_members"]:
+                            return {"error": "service_access_denied"}
+                        principal = f"service:{identity.workspace}:{name}"
+                        expected_sub = cfg["expected_sub"]
+                        missing = {"error": "service_sign_in_required", "message":
+                            "The channel service connection is unavailable. Contact its administrator. Do not request personal sign-in."}
+                        break
             with self.lock:
                 self._purge()
-                login = self.logins.get(identity.subject)
-                if login is None:
-                    return {"error": "sign_in_required", "message": "Use the Slack app Home"}
-                count = self.active_requests.get(identity.subject, 0)
+                login = self.logins.get(principal)
+                if login is None or (expected_sub is not None and login.sub != expected_sub):
+                    return missing
+                count = self.active_requests.get(principal, 0)
                 if count >= 2 or sum(self.active_requests.values()) >= 32:
                     return {"error": "busy", "message": "Retry after the current request finishes"}
-                self.active_requests[identity.subject] = count + 1
+                self.active_requests[principal] = count + 1
                 admitted = True
             # Never hold the shared identity lock over remote tool execution.
+            logging.getLogger("agentcore.identity").info(
+                "dispatch_identity workspace=%s channel=%s requester=%s principal=%s tool=%s",
+                identity.workspace, channel_id or "personal", identity.member, principal, tool)
             # The Login object is a request-local snapshot, not a mutable header cache.
             provider = Provider("gateway", "", self.s["gateway_url"], ())
             value = self.transport(provider, login.token, self.s["tools"][tool], dict(arguments))
@@ -251,16 +302,16 @@ class PortalRuntime:
             with self.lock:
                 self._purge()
                 # Identity equality is insufficient after re-login to another account.
-                if self.logins.get(identity.subject) is not login:
-                    return {"error": "sign_in_required", "message": "Use the Slack app Home"}
+                if self.logins.get(principal) is not login:
+                    return missing
                 return {"result": value}
         except Exception:
             return dict(GATEWAY_FAILURE)
         finally:
             if admitted:
                 with self.lock:
-                    remaining = self.active_requests[identity.subject] - 1
+                    remaining = self.active_requests[principal] - 1
                     if remaining:
-                        self.active_requests[identity.subject] = remaining
+                        self.active_requests[principal] = remaining
                     else:
-                        del self.active_requests[identity.subject]
+                        del self.active_requests[principal]

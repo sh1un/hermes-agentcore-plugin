@@ -27,6 +27,16 @@ def task_identity(workspaces):
     return SlackIdentity(team, user)
 
 
+def task_channel():
+    """Parent Slack channel, not thread ID. Never use environment fallback."""
+    from gateway import session_context as sc
+    var = sc._VAR_MAP.get("HERMES_SESSION_CHAT_ID")
+    value = copy_context().get(var) if var is not None else None
+    if not isinstance(value, str) or not re.fullmatch(r"[CGD][A-Z0-9]+", value):
+        raise ValueError("Trusted Slack channel required")
+    return value
+
+
 def load_settings(path):
     with open(path, "rb") as f:
         settings = tomllib.load(f)
@@ -64,6 +74,8 @@ def enable(ctx, config_file):
         return enable_portal(ctx, raw)
     if raw.get("mode", "direct") != "direct":
         raise ValueError("Unknown integration mode")
+    if raw.get("service_accounts"):
+        raise ValueError("Service channel routing requires portal mode")
     if not callable(getattr(ctx, "register_platform_handler", None)):
         raise RuntimeError("Hermes register_platform_handler is required")
     from gateway import session_context as sc
@@ -127,6 +139,8 @@ def enable_portal(ctx, raw):
         if key not in getattr(sc, "_VAR_MAP", {}):
             raise RuntimeError("Hermes task-local identity API is incompatible")
     settings = validate_settings(raw)
+    if settings.get("service_accounts") and "HERMES_SESSION_CHAT_ID" not in getattr(sc, "_VAR_MAP", {}):
+        raise RuntimeError("Hermes task-local channel API is required for service routing")
     runtime = PortalRuntime(settings, Cognito(settings), call_mcp)
     servers = []
     def wire(app, adapter):
@@ -146,11 +160,12 @@ def enable_portal(ctx, raw):
         try:
             if not isinstance(args, dict) or set(args) != {"tool", "arguments"}:
                 return json.dumps({"error": "invalid_arguments"})
-            return json.dumps(runtime.execute(task_identity(settings["workspace_ids"]), args["tool"], args["arguments"]))
+            channel = task_channel() if settings.get("service_accounts") else None
+            return json.dumps(runtime.execute(task_identity(settings["workspace_ids"]), args["tool"], args["arguments"], channel_id=channel))
         except Exception:
             return json.dumps({"error": "identity_unavailable"})
     ctx.register_tool(name="agentcore_jira_read", toolset="agentcore", handler=execute,
-        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. Manage sign-in and Connections in Slack app Home.",
+        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway. The host selects the authorized identity. Personal sign-in and administrator service connections are managed in Slack app Home.",
             "parameters": {"type": "object", "additionalProperties": False, "required": ["tool", "arguments"],
                 "properties": {"tool": {"type": "string", "enum": list(settings["tools"])},
                     "arguments": {"type": "object", "description": "Empty for resources, or cloudId and issueIdOrKey for an issue"}}}})

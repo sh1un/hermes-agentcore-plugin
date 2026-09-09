@@ -37,6 +37,9 @@ and integration gaps
 
 ## Development
 
+The working branch includes experimental [channel-bound service identity](docs/channel-service-identity.md).
+This is not included in the `v0.1.0` release and is not yet validated for unattended operation.
+
 ```bash
 python3 -m unittest discover -s tests -v
 ```
