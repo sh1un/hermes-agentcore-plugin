@@ -75,3 +75,5 @@ Start with [`examples/vault-gateway.toml`](examples/vault-gateway.toml).
 ## Host dependency compatibility
 
 Image builds validate plugin pins against the pinned Hermes project, including its optional dependencies, before installing packages. They use Hermes' lock-aware installer and preserve its declared overrides. A standalone dependency check is insufficient: it can pass while Hermes later rejects the plugin's project requirements.
+
+After validation, the image retains the plugin's source project metadata as `pyproject.build.toml`. The runtime payload is a prebuilt directory plugin, so Hermes does not treat it as a new source workspace or reinstall dependencies at startup. Builds reject a native doctor result that reports an out-of-sync environment.

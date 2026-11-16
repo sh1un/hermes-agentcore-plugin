@@ -49,7 +49,9 @@ def main():
     root = Path("/opt/hermes")
     plugin_root = root / "plugins/agentcore"
     host = tomllib.loads((root / "pyproject.toml").read_text())
-    plugin = tomllib.loads((plugin_root / "pyproject.toml").read_text())
+    source_project = plugin_root / "pyproject.toml"
+    build_project = plugin_root / "pyproject.build.toml"
+    plugin = tomllib.loads((source_project if source_project.is_file() else build_project).read_text())
     requirements = host["project"]["dependencies"] + plugin["project"]["dependencies"]
     check_shared_pins(host, plugin)
     # Respect the host's deliberate overrides (including Pillow), rather than
@@ -61,6 +63,11 @@ def main():
         environment.install_requirements(requirements, lock=root / "uv.lock")
     check_installed(requirements)
     environment.check(root / "uv.lock")
+    if args.install and source_project.is_file():
+        # This immutable image ships a ready-to-load directory plugin, not a
+        # source workspace that Hermes should resolve/install again at startup.
+        # Keep the reviewed metadata for consumer-image checks and provenance.
+        source_project.rename(build_project)
 
     from hermes_cli.plugins import PluginContext
     from gateway import session_context
@@ -79,8 +86,9 @@ def main():
             env=dict(os.environ, HERMES_HOME=directory, HOME=directory),
             capture_output=True, text=True, timeout=60,
         )
-        if result.returncode != 0 or "AgentCore plugin:" not in result.stdout:
-            raise ValueError("Installed AgentCore plugin failed native Hermes CLI discovery")
+        if (result.returncode != 0 or "AgentCore plugin:" not in result.stdout or
+                "out of sync" in result.stdout + result.stderr):
+            raise ValueError("Installed AgentCore plugin failed native discovery or managed-environment validation")
     print("Host project pins, installed dependencies and native plugin discovery verified.")
 
 
