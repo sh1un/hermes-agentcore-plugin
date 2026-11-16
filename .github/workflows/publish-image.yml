@@ -16,13 +16,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.12'
+          version: '0.13.8'
       - name: Test plugin
         run: |
-          pip install -r requirements.txt
-          python -m unittest discover -s tests -v
+          uv run --no-project --python 3.14 --with-requirements tests/requirements.txt -m unittest discover -s tests -v
       - name: Prepare immutable source
         run: |
           mkdir -p .ci/hermes-plugin/plugin
@@ -32,7 +31,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          python - <<'PY'
+          uv run --no-project --python 3.14 - <<'PY'
           import os, pathlib, re, tomllib
           version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
           manifest = pathlib.Path('plugin.yaml').read_text()

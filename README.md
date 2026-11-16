@@ -46,7 +46,7 @@ and integration gaps
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v
+uv run --no-project --python 3.14 --with-requirements tests/requirements.txt -m unittest discover -s tests -v
 ```
 
 Directory plugin layout uses `plugin.yaml` and `__init__.py` with `register(ctx)`
@@ -71,3 +71,7 @@ With [`mode=vault_gateway`](docs/vault-gateway.md), Identity stores Cognito toke
 and your platform handles browser session binding. Hermes runs in your existing
 agent deployment and calls Gateway without a local callback listener.
 Start with [`examples/vault-gateway.toml`](examples/vault-gateway.toml).
+
+## Host dependency compatibility
+
+Image builds validate plugin pins against the pinned Hermes project, including its optional dependencies, before installing packages. They use Hermes' lock-aware installer and preserve its declared overrides. A standalone dependency check is insufficient: it can pass while Hermes later rejects the plugin's project requirements.
