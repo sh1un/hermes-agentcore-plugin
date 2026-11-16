@@ -11,7 +11,7 @@ Hermes host API 相容限制請先讀 [compatibility audit](compatibility-audit.
 - 已有 ACTIVE Consent portal 與 JWT Gateway
 - Cognito pool 必須與 portal 主 IdP 及 Gateway issuer 相同
 - Plugin 使用 public app client，不含 client secret，允許 Authorization Code flow
-- client scope 包含 openid、email、profile、agentcore/gateway.invoke
+- client scope 包含 openid、email、profile、lazarus-agentcore/gateway.invoke
 - Gateway allowedClients 包含 Plugin 使用的 client ID
 - 該 client 允許 HTTPS Plugin callback，例如 https://hermes-login.example.com/oauth/cognito/callback
 - Cognito domain 是 managed login domain，不是 user pool issuer URL

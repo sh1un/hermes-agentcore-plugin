@@ -14,6 +14,9 @@ before calling `CompleteResourceTokenAuth`.
 1. Allow your runtime role to assume the platform's agent role. For ECS, use the
    Task Role rather than the execution role. Do not grant the agent binding permissions.
 2. Install this plugin and `requirements.txt` in your existing agent image.
+   Commit-SHA runtime images are published for `linux/amd64` and `linux/arm64`.
+   You can also copy `/opt/hermes/plugins/agentcore` from a digest-pinned image
+   into your own Hermes image, install its requirements, and retain your entrypoint.
 3. Copy `examples/vault-gateway.toml`, replace the example values, and mount it
    read-only in the task. Keep connection metadata in a task-local directory;
    multiple tasks must not share the same SQLite file.

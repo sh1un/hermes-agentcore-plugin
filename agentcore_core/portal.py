@@ -51,7 +51,7 @@ def validate_settings(s):
         raise ValueError("Two explicit Gateway read tool names are required")
     if not 1 <= s.get("callback_port", 8849) <= 65535:
         raise ValueError("Invalid callback port")
-    s["scope"] = "openid email profile agentcore/gateway.invoke"
+    s["scope"] = "openid email profile lazarus-agentcore/gateway.invoke"
     return s
 
 

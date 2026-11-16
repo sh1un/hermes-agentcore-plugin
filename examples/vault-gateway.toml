@@ -13,7 +13,7 @@ workspace_ids = ["TEXAMPLE"]
 allowed_users = ["UEXAMPLE"]
 # Ephemeral, private connection metadata. Do not share a SQLite DB across ECS tasks.
 data_dir = "/tmp/hermes-vault"
-scopes = ["openid", "email", "profile", "aws.cognito.signin.user.admin", "agentcore/gateway.invoke"]
+scopes = ["openid", "email", "profile", "aws.cognito.signin.user.admin", "lazarus-agentcore/gateway.invoke"]
 
 [custom_parameters]
 # Enable only when the platform's exported configuration includes this hint.

@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from .connections import Store, SlackIdentity, ConnectionRejected
 from .runtime import AgentCore, Pending, Provider, Runtime
 
-SCOPES = ("openid", "email", "profile", "aws.cognito.signin.user.admin", "agentcore/gateway.invoke")
+SCOPES = ("openid", "email", "profile", "aws.cognito.signin.user.admin", "lazarus-agentcore/gateway.invoke")
 TOOLS = {"getAccessibleAtlassianResources": "JiraRovoTarget___getAccessibleAtlassianResources",
          "getJiraIssue": "JiraRovoTarget___getJiraIssue"}
 

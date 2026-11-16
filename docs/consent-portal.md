@@ -45,7 +45,7 @@ Portal 的 browser session 不會自動提供 token 給 Slack bot
 Portal 模式不使用 legacy SQLite、provider token exchange 或確認碼頁面
 
 需要準備 Cognito public app client，啟用 code flow 與 PKCE
-Gateway allowedClients 必須包含該 client，scope 必須允許 agentcore/gateway.invoke
+Gateway allowedClients 必須包含該 client，scope 必須允許 lazarus-agentcore/gateway.invoke
 另外註冊 Plugin HTTPS /oauth/cognito/callback，必須指向使用者瀏覽器可存取的 Plugin callback endpoint
 Portal 繼續使用既有 /callback 與 /connect/callback，不覆蓋它們
 入口只監聽 loopback，反向代理需與 Plugin 同 network namespace，停用 query log 並設定限流
