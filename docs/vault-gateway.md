@@ -7,12 +7,14 @@ from Identity and uses it to call Gateway. Refresh tokens stay in Token Vault.
 ## Setup
 
 Your platform operator supplies a workload identity, Cognito credential provider,
-Gateway and consent portal URLs, a binding API, and an IAM role your runtime can
-assume. The binding service must verify the browser user's identity independently
-before calling `CompleteResourceTokenAuth`.
+Gateway and consent portal URLs, and a binding API. The Agent Owner manages
+the runtime IAM role and its AgentCore access policy. The binding service must
+verify the browser user's identity independently before calling
+`CompleteResourceTokenAuth`.
 
-1. Allow your runtime role to assume the platform's agent role. For ECS, use the
-   Task Role rather than the execution role. Do not grant the agent binding permissions.
+1. Create the access role and IAM policies in the Agent Owner repository. Allow
+   the ECS Task Role to assume it. Scope access to the registered workload,
+   credential provider and users; deny completing bindings or assuming the binder role.
 2. Install this plugin and `requirements.txt` in your existing agent image.
    Commit-SHA runtime images are published for `linux/amd64` and `linux/arm64`.
    You can also copy `/opt/hermes/plugins/agentcore` from a digest-pinned image
@@ -50,6 +52,31 @@ Authorization links stay in native Slack UI; model tools receive no OAuth data.
 
 After a task restart, connect again to reuse the existing Vault grant. Disconnect
 blocks local tool calls but does not revoke Cognito or Jira authorizations.
+
+## v0.2.0 binding policy
+
+Only the verified Slack identity that initiated a new authorization request may
+complete its binding. The platform compares workspace and member IDs, not email.
+Google login remains subject to the platform's ordinary account restrictions.
+
+For a request initiated by Alice:
+
+| Google login | Verified browser Slack identity | Result |
+| --- | --- | --- |
+| Alice | Alice | Allow |
+| Bob | Bob | Reject |
+| Bob | Alice | Allow |
+| Bob | No valid Slack session | Reject |
+
+The platform verifies the Slack OIDC ID token, matches it to the registered
+initiator, then calls `CompleteResourceTokenAuth` with that verified user ID.
+The OAuth callback URL alone is insufficient. No Google-to-Slack email mapping
+or separate Slack **Confirm** click is required. An already signed-in browser
+may reuse its Slack session; this flow does not prove a fresh, deliberate click.
+
+**Refresh sign-in** polls Identity for the original pending session. It cannot
+complete binding or open the local tool gate while authorization is pending.
+A different Slack user cannot refresh Alice's pending connection.
 
 ## Binding API
 

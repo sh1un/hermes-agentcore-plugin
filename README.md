@@ -2,7 +2,14 @@
 
 Hermes plugin for native Slack account linking and per-user AWS Bedrock AgentCore access
 
-## Versioned MVP
+## v0.2.0
+
+Prepared in source: [`mode=vault_gateway`](docs/vault-gateway.md) uses AgentCore
+Identity for Cognito tokens and a separate platform service for browser Slack
+identity verification. **Refresh sign-in** reads the result; it cannot complete
+binding. See the [release notes](docs/releases/v0.2.0.md).
+
+## Earlier MVP
 
 The first MVP release is `v0.1.0`. Pin plugin source to that Git tag or use
 `ghcr.io/sh1un/hermes-agentcore-plugin:v0.1.0` for the bundled Hermes runtime.
@@ -11,12 +18,13 @@ See [release notes and limitations](docs/releases/v0.1.0.md).
 
 ## Current status
 
-Consent portal mode: native Cognito login with PKCE, Slack account confirmation,
+Existing `mode=portal`: native Cognito login with PKCE, Slack account confirmation,
 portal entry, and per-user read-only Jira dispatch through AgentCore Gateway
 
 No OAuth artifacts are exposed by authorization tooling to
-the LLM. Cognito access tokens live only in memory until expiry or local sign-out.
-Restart requires sign-in again. Provider grants are not revoked by local sign-out
+the LLM. In portal mode, Cognito access tokens live only in memory until expiry or
+local sign-out; restart requires sign-in again. Vault Gateway mode retrieves them
+from Identity instead. Local sign-out does not revoke provider grants
 
 Live integration behavior, Gateway Policy outcomes and compatibility with each
 host deployment require separate acceptance testing. Unit tests are not production acceptance
