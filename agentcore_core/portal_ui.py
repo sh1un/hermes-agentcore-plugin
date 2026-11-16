@@ -46,30 +46,30 @@ class PortalConnections(NativeConnections):
             return b
         blocks = [{"type": "header", "text": {"type": "plain_text", "text": "AgentCore Connections"}},
                   {"type": "section", "text": {"type": "plain_text", "text":
-                    notice or "先連接你的 Google 帳號，讓 Plugin 知道這個 Slack 身份對應哪個登入帳號，再到 Consent portal 使用同一帳號授權 Jira。"}},
+                    notice or "Connect your Google account, then use the same account in the consent portal to authorize Jira."}},
                   {"type": "section", "text": {"type": "plain_text", "text":
-                    {"signed_out": "尚未連接 Google 帳號", "signed_in": "已連接 Google 帳號",
-                     "confirm_identity": "請確認這是你的 Google 帳號"}[status["state"]]
+                    {"signed_out": "Google account not connected", "signed_in": "Google account connected",
+                     "confirm_identity": "Confirm your Google account"}[status["state"]]
                     + (": " + status["label"] if status.get("label") else "")}}]
         buttons = []
         if status["state"] == "signed_out":
             url = await asyncio.to_thread(self.runtime.login_url, identity)
-            connect = button("連接 Google 帳號", "open", url=url)
+            connect = button("Connect Google account", "open", url=url)
             connect["style"] = "primary"
             buttons.append(connect)
         if status["state"] == "confirm_identity":
-            b = button("確認連接此帳號", "confirm", status["attempt"])
+            b = button("Confirm account", "confirm", status["attempt"])
             b["style"] = "primary"
             buttons.append(b)
-        buttons.append(button("重新整理", "refresh"))
-        signout = button("取消連接" if status["state"] != "signed_in" else "登出此 Plugin", "signout")
+        buttons.append(button("Refresh", "refresh"))
+        signout = button("Cancel connection" if status["state"] != "signed_in" else "Sign out", "signout")
         if status["state"] == "signed_in":
             signout["style"] = "danger"
         buttons.append(signout)
         blocks.append({"type": "actions", "elements": buttons})
         blocks.append({"type": "actions", "elements": [button("Manage Connections", "portal", url=self.runtime.s["portal_url"])]})
         blocks.append({"type": "context", "elements": [{"type": "plain_text", "text":
-            "連接 Google 帳號不代表已授權 Jira。登出此 Plugin 不會撤銷 Consent portal 或第三方服務的授權。"}]})
+            "Connecting Google does not authorize Jira. Signing out here leaves portal and provider grants unchanged."}]})
         await client.views_publish(user_id=identity.member, view={"type": "home", "blocks": blocks})
 
     async def async_process(self, *, req, resp, next):
@@ -105,10 +105,10 @@ class PortalConnections(NativeConnections):
         url, notice = None, ""
         try:
             if action == "hacp:login":
-                notice = "請點「連接 Google 帳號」直接開啟登入頁，登入後回到 Slack 確認帳號。"
+                notice = "Select Connect Google account, sign in, then return to Slack to confirm the account."
             elif action == "hacp:confirm":
                 await asyncio.to_thread(self.runtime.confirm, identity, value)
-                notice = "Google 帳號已連接。請開啟 Manage Connections，使用同一帳號授權 Jira。"
+                notice = "Google account connected. Open Manage Connections and authorize Jira with the same account."
             elif action == "hacp:signout":
                 await asyncio.to_thread(self.runtime.signout, identity)
                 notice = "Signed out here. Existing portal and provider grants were not revoked."

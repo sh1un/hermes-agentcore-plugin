@@ -56,3 +56,10 @@ use that store and never imports legacy connection state automatically
 [Technical design and acceptance criteria](docs/technical-design.md)
 
 Commit messages are English and follow Conventional Commits 1.0.0-beta.4
+
+## Vault Gateway mode
+
+With [`mode=vault_gateway`](docs/vault-gateway.md), Identity stores Cognito tokens
+and your platform handles browser session binding. Hermes runs in your existing
+agent deployment and calls Gateway without a local callback listener.
+Start with [`examples/vault-gateway.toml`](examples/vault-gateway.toml).

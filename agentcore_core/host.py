@@ -60,6 +60,9 @@ def load_settings(path):
 def enable(ctx, config_file):
     with open(config_file, "rb") as f:
         raw = tomllib.load(f)
+    if raw.get("mode") == "vault_gateway":
+        from .vault_gateway import enable as enable_vault_gateway
+        return enable_vault_gateway(ctx, raw)
     if raw.get("mode") == "portal":
         return enable_portal(ctx, raw)
     if raw.get("mode", "direct") != "direct":

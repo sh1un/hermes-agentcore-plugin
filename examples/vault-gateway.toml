@@ -1,0 +1,20 @@
+# Replace these examples with settings supplied by your platform operator.
+# This mode runs in your existing agent and opens no inbound callback port.
+mode = "vault_gateway"
+region = "ap-southeast-1"
+workload = "example-hermes"
+credential_provider = "example-cognito"
+agent_role_arn = "arn:aws:iam::123456789012:role/example-hermes-access"
+binding_api_url = "https://examplebinding.execute-api.ap-southeast-1.amazonaws.com/bindings/requests"
+return_url = "https://examplebinding.execute-api.ap-southeast-1.amazonaws.com/oauth/agentcore/callback"
+gateway_url = "https://example-gateway.gateway.bedrock-agentcore.ap-southeast-1.amazonaws.com/mcp"
+portal_url = "https://portal.example.com"
+workspace_ids = ["TEXAMPLE"]
+allowed_users = ["UEXAMPLE"]
+# Ephemeral, private connection metadata. Do not share a SQLite DB across ECS tasks.
+data_dir = "/tmp/hermes-vault"
+scopes = ["openid", "email", "profile", "aws.cognito.signin.user.admin", "agentcore/gateway.invoke"]
+
+[custom_parameters]
+# Enable only when the platform's exported configuration includes this hint.
+# identity_provider = "Google"

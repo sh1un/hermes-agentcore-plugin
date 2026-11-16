@@ -113,7 +113,7 @@ class PortalTests(unittest.TestCase):
             await ui.home(client, self.a)
             blocks = client.views_publish.call_args.kwargs["view"]["blocks"]
             buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
-            connect = next(b for b in buttons if b["text"]["text"] == "連接 Google 帳號")
+            connect = next(b for b in buttons if b["text"]["text"] == "Connect Google account")
             self.assertEqual(connect["action_id"], "hacp:open")
             self.assertEqual(connect["style"], "primary")
             self.assertNotIn("agent_prompt", connect)
@@ -137,7 +137,7 @@ class PortalTests(unittest.TestCase):
             confirm = next(b for b in buttons if b["action_id"] == "hacp:confirm")
             self.assertEqual(confirm["style"], "primary")
             refresh = next(b for b in buttons if b["action_id"] == "hacp:refresh")
-            self.assertEqual(refresh["text"]["text"], "重新整理")
+            self.assertEqual(refresh["text"]["text"], "Refresh")
             self.assertNotEqual(confirm["value"], state)
             self.assertNotIn("confirm", confirm)  # One explicit confirmation, no second dialog.
             with self.assertRaises(ValueError):
@@ -149,7 +149,7 @@ class PortalTests(unittest.TestCase):
             buttons = [b for block in blocks for b in block.get("elements", []) if b.get("type") == "button"]
             signout = next(b for b in buttons if b["action_id"] == "hacp:signout")
             self.assertEqual(signout["style"], "danger")
-            self.assertEqual(signout["text"]["text"], "登出此 Plugin")
+            self.assertEqual(signout["text"]["text"], "Sign out")
         asyncio.run(scenario())
 
     def test_direct_login_expiry_and_cancellation(self):
