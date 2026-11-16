@@ -11,7 +11,8 @@ LABEL io.hermes.agentcore.plugin.revision=${PLUGIN_REVISION}
 COPY plugin/ /opt/hermes/plugins/agentcore/
 # Use the plugin's reviewed pins rather than inheriting the host project's
 # rolling exclude-newer quarantine, which rejects this plugin's AWS SDK.
-RUN uv --no-config pip install --python /opt/hermes/.venv/bin/python --no-cache-dir -r /opt/hermes/plugins/agentcore/requirements.txt 'msal==1.38.0' \
+# Hermes v0.23.0 browser-harness requires this Pillow version.
+RUN uv --no-config pip install --python /opt/hermes/.venv/bin/python --no-cache-dir -r /opt/hermes/plugins/agentcore/requirements.txt 'pillow==12.3.0' \
     && uv pip check --python /opt/hermes/.venv/bin/python
 COPY check-host.py /tmp/check-host.py
 RUN /opt/hermes/.venv/bin/python /tmp/check-host.py
