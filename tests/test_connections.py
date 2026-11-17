@@ -89,3 +89,51 @@ class LifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LazyStoreTests(unittest.TestCase):
+    def test_discovery_and_unused_shutdown_do_not_open_database(self):
+        from agentcore_core.connections import LazyStore
+        factory = Mock()
+        store = LazyStore(factory)
+        factory.assert_not_called()
+        store.close()
+        factory.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            store.status(SlackIdentity("T123", "U123"), "jira")
+        factory.assert_not_called()
+
+    def test_second_process_discovery_does_not_break_active_owner(self):
+        from agentcore_core.connections import LazyStore
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.sqlite"
+            owner = Store(path, "test", frozenset({"jira"}))
+            factory = Mock(side_effect=lambda: Store(path, "test", frozenset({"jira"})))
+            observer = LazyStore(factory)
+            person = SlackIdentity("T123", "U123")
+            try:
+                # A doctor/catalog check must not take ownership or reset sessions.
+                generation = owner.begin(person, "jira").generation
+                factory.assert_not_called()
+                with self.assertRaisesRegex(RuntimeError, "already has an owner"):
+                    observer.status(person, "jira")
+                owner.complete_verified(person, "jira", generation)
+                self.assertEqual(owner.status(person, "jira").state, "connected")
+            finally:
+                observer.close()
+                owner.close()
+
+    def test_concurrent_first_use_initializes_once_and_cleanup_is_idempotent(self):
+        from agentcore_core.connections import LazyStore
+        from concurrent.futures import ThreadPoolExecutor
+        backend = Mock()
+        backend.status.return_value = "connected"
+        factory = Mock(return_value=backend)
+        store = LazyStore(factory)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: store.status("person", "jira"), range(12)))
+        self.assertEqual(results, ["connected"] * 12)
+        factory.assert_called_once()
+        store.close()
+        store.close()
+        backend.close.assert_called_once()

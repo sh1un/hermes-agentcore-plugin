@@ -12,7 +12,7 @@ import secrets
 import time
 from urllib.parse import urlsplit
 
-from .connections import Store, SlackIdentity, ConnectionRejected
+from .connections import LazyStore, Store, SlackIdentity, ConnectionRejected
 from .runtime import AgentCore, Pending, Provider, Runtime
 
 SCOPES = ("openid", "email", "profile", "aws.cognito.signin.user.admin", "lazarus-agentcore/gateway.invoke")
@@ -188,8 +188,8 @@ def enable(ctx, raw):
         return Session()
 
     http = httpx.Client(timeout=10, follow_redirects=False, trust_env=False)
-    store = Store(Path(settings["data_dir"]).expanduser() / "connections.sqlite",
-                  settings["region"] + ":" + settings["workload"], frozenset({"gateway"}))
+    store = LazyStore(lambda: Store(Path(settings["data_dir"]).expanduser() / "connections.sqlite",
+                  settings["region"] + ":" + settings["workload"], frozenset({"gateway"})))
     provider = Provider("gateway", settings["credential_provider"], settings["gateway_url"], SCOPES)
     def transport(provider, token, tool, arguments):
         return call_mcp(provider, token, TOOLS[tool], arguments)

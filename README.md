@@ -58,6 +58,11 @@ running Gateway chat has loaded. `--discovery-only` checks directory-plugin
 discovery for image builds without runtime settings. OAuth actions run only
 through native Slack UI
 
+Vault Gateway opens its single-owner connection store only when a connection
+is used. Catalog discovery and doctor checks do not acquire the database lock
+or modify the active Gateway's connection state. Actual operations still require
+exclusive ownership; this does not enable a second runtime to share a login.
+
 The host must authenticate Slack events before constructing a `SlackIdentity`
 ID syntax validation is not authentication
 

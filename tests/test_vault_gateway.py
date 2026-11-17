@@ -175,7 +175,8 @@ class HostTests(unittest.TestCase):
                 patch("boto3.client", return_value=sts), patch("boto3.Session", return_value=session), \
                 patch("httpx.Client", return_value=http), patch.object(host, "task_identity", return_value=SlackIdentity("TTEST", "UALICE")), \
                 patch.object(callback, "start_callback") as callback_server, patch.object(vault_gateway.atexit, "register") as close, \
-                patch("agentcore_core.transport.call_mcp", return_value={"content": []}) as mcp:
+                patch("agentcore_core.transport.call_mcp", return_value={"content": []}) as mcp, \
+                patch.object(vault_gateway, "Store", wraps=vault_gateway.Store) as store_factory:
             raw = settings()
             raw["data_dir"] = directory
             config = Path(directory) / "vault.toml"
@@ -183,12 +184,14 @@ class HostTests(unittest.TestCase):
             lines += ["[custom_parameters]", 'identity_provider = "Google"']
             config.write_text("\n".join(lines))
             runtime = host.enable(ctx, config)
+            store_factory.assert_not_called()
             try:
                 app = Mock()
                 ctx.register_platform_handler.call_args.args[1](app, None)
                 ui = app.use.call_args.args[0]
                 client = Mock(views_publish=AsyncMock())
                 asyncio.run(ui.home(client, SlackIdentity("TTEST", "UALICE")))
+                store_factory.assert_called_once()
                 self.assertNotIn("hac:code", json.dumps(client.views_publish.call_args.kwargs))
                 runtime.connect(SlackIdentity("TTEST", "UALICE"), "gateway")
                 result = json.loads(ctx.register_tool.call_args.kwargs["handler"]({"tool": "getJiraIssue", "arguments": {"cloudId": "site", "issueIdOrKey": "TEST-1"}}))

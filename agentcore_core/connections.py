@@ -130,3 +130,30 @@ class Store:
             if self._owner_fd is not None:
                 os.close(self._owner_fd)
                 self._owner_fd = None
+
+
+class LazyStore:
+    """Defer single-owner state until use; plugin discovery must not acquire it."""
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._store = None
+        self._closed = False
+        self._initialization_lock = threading.RLock()
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        with self._initialization_lock:
+            if self._closed:
+                raise RuntimeError("Connection store is closed")
+            if self._store is None:
+                self._store = self._factory()
+            return getattr(self._store, name)
+
+    def close(self):
+        with self._initialization_lock:
+            if not self._closed:
+                self._closed = True
+                if self._store is not None:
+                    self._store.close()
