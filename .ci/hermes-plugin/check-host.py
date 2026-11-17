@@ -82,7 +82,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="agentcore-host-check-") as directory:
         Path(directory, "config.yaml").write_text(json.dumps({"plugins": {"enabled": ["agentcore"]}}))
         result = subprocess.run(
-            [str(root / ".venv/bin/hermes"), "agentcore", "doctor"],
+            [str(root / ".venv/bin/hermes"), "agentcore", "doctor", "--discovery-only"],
             env=dict(os.environ, HERMES_HOME=directory, HOME=directory),
             capture_output=True, text=True, timeout=60,
         )

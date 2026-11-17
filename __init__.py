@@ -4,13 +4,12 @@
 def register(ctx):
     def setup(parser):
         parser.add_argument("action", choices=["doctor"])
+        parser.add_argument("--discovery-only", action="store_true",
+                            help="Check directory plugin discovery without requiring runtime settings")
 
     def doctor(args):
-        print("AgentCore plugin: native Cognito login, Consent portal entry and Gateway Jira reads.")
-        print("Use mode=vault_gateway for platform-hosted binding and Identity-managed Cognito tokens.")
-        print("Existing mode=portal and direct configurations remain supported.")
-        print("Requires register_platform_handler and task-local Slack identity context.")
-        print("Configure plugins.entries.agentcore.settings.config_file to enable.")
+        from .agentcore_core.doctor import run
+        return run(ctx, args)
 
     ctx.register_cli_command(
         name="agentcore",

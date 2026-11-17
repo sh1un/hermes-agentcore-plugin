@@ -50,8 +50,13 @@ uv run --no-project --python 3.14 --with-requirements tests/requirements.txt -m 
 ```
 
 Directory plugin layout uses `plugin.yaml` and `__init__.py` with `register(ctx)`
-The diagnostic command is `hermes agentcore doctor`. Configured installations also
-register `agentcore_jira_read`. OAuth actions run only through native Slack UI
+`hermes agentcore doctor` checks the current profile's configuration, tool
+registration, Slack toolset selection, and uncollapsed model catalog. It exits
+with an error if `agentcore_jira_read` is unavailable, without printing config
+values or requesting tokens. This is a local process check, not proof of what a
+running Gateway chat has loaded. `--discovery-only` checks directory-plugin
+discovery for image builds without runtime settings. OAuth actions run only
+through native Slack UI
 
 The host must authenticate Slack events before constructing a `SlackIdentity`
 ID syntax validation is not authentication
