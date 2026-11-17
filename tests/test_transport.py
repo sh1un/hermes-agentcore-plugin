@@ -3,11 +3,39 @@ from contextlib import asynccontextmanager
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 from mcp import types
+from mcp.shared.exceptions import MCPError
 
-from agentcore_core.transport import _call, diagnostic
+from agentcore_core.transport import _call, diagnostic, ToolAuthorizationRequired
 
 
 class TransportTests(unittest.TestCase):
+    def test_authorization_rpc_error_is_classified_without_forwarding_oauth_artifacts(self):
+        provider = Mock(endpoint="https://gateway.example/mcp")
+        session = AsyncMock()
+        session.initialize.return_value = types.InitializeResult(
+            protocol_version="2025-11-25", capabilities=types.ServerCapabilities(),
+            server_info=types.Implementation(name="test", version="1"))
+
+        @asynccontextmanager
+        async def streams(*args, **kwargs):
+            yield (None, None, None)
+
+        oauth_error = MCPError(-32042, "private-message", data={
+            "elicitations": [{"url": "https://private.example/authorize?state=private-state"}]})
+        for error in [oauth_error, ExceptionGroup("private-group", [oauth_error]), MCPError(-32603, "private-message")]:
+            with self.subTest(error=type(error).__name__), patch("httpx2.AsyncClient") as client, \
+                    patch("mcp.ClientSession") as factory, \
+                    patch("mcp.client.streamable_http.streamable_http_client", streams):
+                client.return_value.__aenter__.return_value = Mock()
+                factory.return_value.__aenter__.return_value = session
+                session.call_tool.side_effect = error
+                expected = MCPError if getattr(error, "code", None) == -32603 else ToolAuthorizationRequired
+                with self.assertLogs("agentcore.gateway") as logs, self.assertRaises(expected) as caught:
+                    asyncio.run(_call(provider, "private-token", "tool", {}))
+                self.assertNotIn("private", str(logs.output))
+                if expected is ToolAuthorizationRequired:
+                    self.assertNotIn("private", str(caught.exception))
+
     def test_diagnostics_do_not_serialize_arbitrary_values(self):
         with self.assertLogs("agentcore.gateway") as logs:
             diagnostic("private-token", "https://private.example?code=secret", status="secret",

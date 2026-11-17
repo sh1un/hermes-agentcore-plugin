@@ -7,6 +7,10 @@ import re
 LOG = logging.getLogger("agentcore.gateway")
 
 
+class ToolAuthorizationRequired(Exception):
+    """The caller must authorize a downstream tool in the consent portal."""
+
+
 def diagnostic(stage, outcome, *, status=None, code=None, request_id=None, protocol=None):
     """Operator-only allowlisted metadata. Never log exceptions or response bodies."""
     fields = {"stage": stage if stage in {"connect", "initialize", "call_tool", "filter"} else "other",
@@ -50,14 +54,19 @@ async def _call(provider, token, tool, arguments):
     except BaseException as error:
         # Task groups can wrap RPC errors. Keep only integer codes, never messages/data.
         pending = [error]
+        authorization_required = False
         for _ in range(16):
             if not pending:
                 break
             item = pending.pop()
+            if type(getattr(item, "code", None)) is int and item.code == -32042:
+                authorization_required = True
             diagnostic(stage, "timeout" if isinstance(item, TimeoutError) else "failed",
                        code=getattr(item, "code", None))
             if isinstance(item, BaseExceptionGroup):
                 pending.extend(item.exceptions[:16])
+        if authorization_required:
+            raise ToolAuthorizationRequired("Downstream tool authorization required") from None
         raise
 
 

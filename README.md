@@ -72,6 +72,11 @@ and your platform handles browser session binding. Hermes runs in your existing
 agent deployment and calls Gateway without a local callback listener.
 Start with [`examples/vault-gateway.toml`](examples/vault-gateway.toml).
 
+Gateway sign-in and Jira consent are separate. If a tool needs consent, the plugin
+returns `tool_authorization_required` with the fixed `authorization_portal_url`.
+Open that portal with the same account, connect Jira / Atlassian, and retry.
+The plugin never forwards one-time OAuth URLs or state from Gateway errors.
+
 ## Host dependency compatibility
 
 Image builds validate plugin pins against the pinned Hermes project, including its optional dependencies, before installing packages. They use Hermes' lock-aware installer and preserve its declared overrides. A standalone dependency check is insufficient: it can pass while Hermes later rejects the plugin's project requirements.

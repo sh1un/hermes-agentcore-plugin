@@ -13,6 +13,7 @@ from botocore.validate import validate_parameters
 
 from agentcore_core.connections import Store, SlackIdentity, ConnectionRejected
 from agentcore_core.vault_gateway import CognitoVault, GatewayRuntime, Provider, SCOPES, validate_settings
+from agentcore_core.transport import ToolAuthorizationRequired
 
 
 def settings():
@@ -83,7 +84,8 @@ class GatewayRuntimeTests(unittest.TestCase):
         self.transport = Mock(return_value={"content": [{"text": "issue data"}]})
         self.now = [0]
         self.runtime = GatewayRuntime(self.store, self.backend, self.transport,
-            [Provider("gateway", "provider", settings()["gateway_url"], SCOPES)], clock=lambda: self.now[0])
+            [Provider("gateway", "provider", settings()["gateway_url"], SCOPES)], clock=lambda: self.now[0],
+            portal_url=settings()["portal_url"])
         self.alice, self.bob = SlackIdentity("TTEST", "UALICE"), SlackIdentity("TTEST", "UBOB")
         self.uri = "urn:ietf:params:oauth:request_uri:pending"
         self.url = "https://bedrock-agentcore.ap-southeast-1.amazonaws.com/identities/oauth2/authorize?request_uri=" + self.uri
@@ -105,6 +107,24 @@ class GatewayRuntimeTests(unittest.TestCase):
         self.assertEqual(self.transport.call_count, 1)
         self.backend.complete.assert_not_called()
         self.assertNotIn(b"private-access", (Path(self.tmp.name) / "state.sqlite").read_bytes())
+
+    def test_jira_consent_prompt_returns_fixed_portal_without_disconnecting_gateway(self):
+        self.backend.token.return_value = {"accessToken": "private-token"}
+        self.runtime.connect(self.alice, "gateway")
+        self.transport.side_effect = ToolAuthorizationRequired("private-oauth-url-and-state")
+        result = self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {})
+        self.assertEqual(result["error"], "tool_authorization_required")
+        self.assertEqual(result["authorization_portal_url"], settings()["portal_url"])
+        self.assertIn("Tool permissions", result["message"])
+        self.assertNotIn("private", json.dumps(result))
+        self.assertEqual(self.runtime.status(self.alice), {"gateway": "connected"})
+        self.assertEqual(self.runtime.execute(self.bob, "gateway", "getAccessibleAtlassianResources", {})["error"], "connection_required")
+        self.transport.assert_called_once()
+        self.transport.side_effect = RuntimeError("private-upstream-error")
+        self.assertEqual(self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {}),
+                         {"error": "service_unavailable"})
+        self.transport.side_effect = None
+        self.assertIn("result", self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {}))
 
     def test_registration_failure_cannot_open_dispatch_gate(self):
         self.backend.register_binding.side_effect = RuntimeError("private metadata")

@@ -9,6 +9,7 @@ import time
 from urllib.parse import urlsplit
 
 from .connections import Connection, ConnectionRejected, SlackIdentity
+from .transport import ToolAuthorizationRequired
 
 
 @dataclass(frozen=True)
@@ -163,6 +164,9 @@ class Runtime:
                         return {"error": "unsafe_result"}
                     return {"result": value}
                 return self.store.dispatch(identity, name, generation, call)
+            except ToolAuthorizationRequired:
+                return {"error": "tool_authorization_required",
+                        "message": "Jira / Atlassian authorization is required. Open Slack app Home > Tool permissions, connect your account, then retry."}
             except ConnectionRejected:
                 return {"error": "connection_required", "message": "Use the app Home Connections page"}
             except Exception:

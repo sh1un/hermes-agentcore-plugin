@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import time
 from urllib.parse import urlsplit
 
 from .connections import Store, SlackIdentity, ConnectionRejected
@@ -96,6 +97,10 @@ class CognitoVault(AgentCore):
 
 
 class GatewayRuntime(Runtime):
+    def __init__(self, store, backend, transport, providers, clock=time.monotonic, *, portal_url=None):
+        super().__init__(store, backend, transport, providers, clock)
+        self.portal_url = portal_url
+
     def connect(self, identity, name):
         with self.lock:
             self._purge()
@@ -141,6 +146,10 @@ class GatewayRuntime(Runtime):
         with self.lock:
             previous = self.store.status(identity, name).state
             result = super().execute(identity, name, tool, arguments)
+            if result.get("error") == "tool_authorization_required" and self.portal_url:
+                # Only the fixed, validated portal entry URL is returned. Never
+                # forward the RPC error's one-time authorization URL or state.
+                result["authorization_portal_url"] = self.portal_url
             if previous == "connected" and result.get("error") == "connection_required":
                 self.disconnect(identity, name)
             return result
@@ -184,7 +193,8 @@ def enable(ctx, raw):
     provider = Provider("gateway", settings["credential_provider"], settings["gateway_url"], SCOPES)
     def transport(provider, token, tool, arguments):
         return call_mcp(provider, token, TOOLS[tool], arguments)
-    runtime = GatewayRuntime(store, CognitoVault(settings, session_factory, http), transport, [provider])
+    runtime = GatewayRuntime(store, CognitoVault(settings, session_factory, http), transport, [provider],
+                             portal_url=settings["portal_url"])
 
     class Connections(NativeConnections):
         def identity(self, body, context):
@@ -246,7 +256,7 @@ def enable(ctx, raw):
         except Exception:
             return json.dumps({"error": "identity_unavailable"})
     ctx.register_tool(name="agentcore_jira_read", toolset="agentcore", handler=execute,
-        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. Manage sign-in in app Home.",
+        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. If tool_authorization_required is returned, show the authorization_portal_url link and ask the user to connect Jira / Atlassian, then retry. Manage platform sign-in in app Home.",
             "parameters": {"type": "object", "additionalProperties": False, "required": ["tool", "arguments"],
                 "properties": {"tool": {"type": "string", "enum": list(TOOLS)}, "arguments": {"type": "object"}}}})
     return runtime
