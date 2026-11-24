@@ -51,6 +51,32 @@ class VaultBackendTests(unittest.TestCase):
                 validate_parameters(call.kwargs, model.operation_model(operation).input_shape)
         self.assertEqual(self.client.get_workload_access_token_for_user_id.call_args.kwargs["userId"], "slack:TTEST:UALICE")
 
+    def test_force_authentication_is_only_sent_on_initial_user_request(self):
+        self.backend.token(self.person, self.provider, state="a" * 43, force_authentication=True)
+        forced = self.client.get_resource_oauth2_token.call_args.kwargs.copy()
+        self.assertIs(forced["forceAuthentication"], True)
+        self.assertEqual(forced["customParameters"], {"identity_provider": "Google"})
+        self.assertEqual(forced["resourceCredentialProviderName"], self.provider.credential_provider)
+        self.assertEqual(self.client.get_workload_access_token_for_user_id.call_args.kwargs["userId"], self.person.subject)
+        validate_parameters(forced, get_session().get_service_model("bedrock-agentcore").operation_model("GetResourceOauth2Token").input_shape)
+        self.backend.token(self.person, self.provider, session="urn:ietf:params:oauth:request_uri:pending")
+        self.assertNotIn("forceAuthentication", self.client.get_resource_oauth2_token.call_args.kwargs)
+        self.backend.token(self.person, self.provider)
+        normal = self.client.get_resource_oauth2_token.call_args.kwargs
+        self.assertNotIn("forceAuthentication", normal)
+        forced.pop("forceAuthentication")
+        forced.pop("customState")
+        self.assertEqual(forced, normal)
+
+    def test_force_cannot_be_used_for_polling_or_without_new_state(self):
+        for kwargs in ({"force_authentication": True},
+                       {"force_authentication": True, "state": "state", "session": "urn:ietf:params:oauth:request_uri:pending"},
+                       {"force_authentication": "true", "state": "state"}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                self.backend.token(self.person, self.provider, **kwargs)
+        self.client.get_resource_oauth2_token.assert_not_called()
+        self.client.get_workload_access_token_for_user_id.assert_not_called()
+
     def test_registration_is_sigv4_signed_and_cannot_complete_binding(self):
         self.session.get_credentials.return_value.get_frozen_credentials.return_value = Credentials("access", "secret", "session").get_frozen_credentials()
         self.http.post.return_value.status_code = 201
@@ -107,6 +133,63 @@ class GatewayRuntimeTests(unittest.TestCase):
         self.assertEqual(self.transport.call_count, 1)
         self.backend.complete.assert_not_called()
         self.assertNotIn(b"private-access", (Path(self.tmp.name) / "state.sqlite").read_bytes())
+
+    def test_force_flow_only_affects_initiator_and_refreshes_without_forcing_again(self):
+        self.backend.token.return_value = {"accessToken": "private-existing"}
+        self.runtime.connect(self.alice, "gateway")
+        self.runtime.connect(self.bob, "gateway")
+        self.backend.token.reset_mock()
+        self.backend.token.return_value = {"authorizationUrl": self.url, "sessionUri": self.uri}
+        self.assertEqual(self.runtime.reauthenticate(self.alice, "gateway"), self.url)
+        self.assertEqual(self.runtime.status(self.alice), {"gateway": "connecting"})
+        self.assertEqual(self.runtime.status(self.bob), {"gateway": "connected"})
+        self.backend.token.assert_called_once_with(self.alice, self.runtime.providers["gateway"],
+            state=self.runtime.pending[self.uri].state, force_authentication=True)
+        self.assertEqual(self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {})["error"], "connection_required")
+        self.backend.token.return_value = {"sessionStatus": "IN_PROGRESS"}
+        self.assertEqual(self.runtime.connect(self.alice, "gateway"), self.url)
+        self.backend.token.assert_called_with(self.alice, self.runtime.providers["gateway"], session=self.uri)
+        self.backend.token.return_value = {"accessToken": "private-new"}
+        self.assertIsNone(self.runtime.connect(self.alice, "gateway"))
+        self.assertIn("result", self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {}))
+        self.assertEqual(sum(c.kwargs.get("force_authentication", False) for c in self.backend.token.call_args_list), 1)
+        self.backend.complete.assert_not_called()
+
+    def test_force_replaces_only_own_pending_flow_and_rejects_old_generation(self):
+        self.runtime.connect(self.alice, "gateway")
+        original = self.runtime.pending[self.uri]
+        bob_uri = self.uri + "-bob"
+        self.backend.token.return_value = {"authorizationUrl": self.url, "sessionUri": bob_uri}
+        self.runtime.connect(self.bob, "gateway")
+        bob_pending = self.runtime.pending[bob_uri]
+        new_uri = self.uri + "-new"
+        self.backend.token.return_value = {"authorizationUrl": self.url, "sessionUri": new_uri}
+        self.runtime.reauthenticate(self.alice, "gateway")
+        self.assertNotIn(self.uri, self.runtime.pending)
+        self.assertIs(self.runtime.pending[bob_uri], bob_pending)
+        self.assertNotEqual(original.state, self.runtime.pending[new_uri].state)
+        with self.assertRaises(ConnectionRejected):
+            self.store.complete_verified(self.alice, "gateway", original.generation)
+        self.assertEqual(self.runtime.status(self.alice), {"gateway": "connecting"})
+
+    def test_forced_request_does_not_silently_accept_cached_access_token(self):
+        self.backend.token.return_value = {"accessToken": "private-cached"}
+        self.runtime.connect(self.alice, "gateway")
+        with self.assertRaises(ConnectionRejected):
+            self.runtime.reauthenticate(self.alice, "gateway")
+        self.assertEqual(self.runtime.status(self.alice), {"gateway": "disconnected"})
+        self.assertEqual(self.runtime.pending, {})
+
+    def test_force_error_closes_own_gate_without_exposing_response_or_affecting_bob(self):
+        self.backend.token.return_value = {"accessToken": "private-existing"}
+        self.runtime.connect(self.alice, "gateway")
+        self.runtime.connect(self.bob, "gateway")
+        self.backend.token.side_effect = RuntimeError("private-token-and-oauth-url")
+        with self.assertRaises(ConnectionRejected) as error:
+            self.runtime.reauthenticate(self.alice, "gateway")
+        self.assertNotIn("private", str(error.exception))
+        self.assertEqual(self.runtime.status(self.alice), {"gateway": "disconnected"})
+        self.assertEqual(self.runtime.status(self.bob), {"gateway": "connected"})
 
     def test_jira_consent_prompt_returns_fixed_portal_without_disconnecting_gateway(self):
         self.backend.token.return_value = {"accessToken": "private-token"}

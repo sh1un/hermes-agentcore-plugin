@@ -66,13 +66,19 @@ class CognitoVault(AgentCore):
         super().__init__(None, settings["region"], settings["workload"], settings["return_url"])
         self.settings, self.session_factory, self.http = settings, session_factory, http
 
-    def token(self, identity, provider, state=None, session=None):
+    def token(self, identity, provider, state=None, session=None, *, force_authentication=False):
+        if type(force_authentication) is not bool:
+            raise ValueError("Force authentication must be a boolean")
+        if force_authentication and (not state or session is not None):
+            raise ValueError("Forced authentication must start a new session")
         client = self.session_factory().client("bedrock-agentcore", region_name=self.region)
         workload = client.get_workload_access_token_for_user_id(
             workloadName=self.workload, userId=identity.subject)["workloadAccessToken"]
         args = dict(workloadIdentityToken=workload, resourceCredentialProviderName=provider.credential_provider,
                     scopes=list(provider.scopes), oauth2Flow="USER_FEDERATION",
                     resourceOauth2ReturnUrl=self.return_url, customParameters=dict(self.settings["custom_parameters"]))
+        if force_authentication:
+            args["forceAuthentication"] = True
         if state:
             args["customState"] = state
         if session:
@@ -116,25 +122,38 @@ class GatewayRuntime(Runtime):
                         self.disconnect(identity, name)
                         raise ConnectionRejected("Sign-in failed. Start again")
                     return pending.url
-            if len(self.pending) >= 256:
-                raise ConnectionRejected("Too many pending sign-ins")
-            generation = self.store.begin(identity, name).generation
-            state = secrets.token_urlsafe(32)
-            try:
-                response = self.backend.token(identity, self.providers[name], state=state)
-                if response.get("accessToken"):
-                    self.store.complete_verified(identity, name, generation)
-                    return None
-                url, session = response["authorizationUrl"], response["sessionUri"]
-                self.backend.validate_url(url)
-                if not re.fullmatch(r"urn:ietf:params:oauth:request_uri:[A-Za-z0-9._~-]{1,900}", session):
-                    raise ValueError("Invalid authorization session")
-                self.backend.register_binding(identity, session, state)
-                self.pending[session] = Pending(identity, name, generation, state, session, url, self.clock() + 600)
-                return url
-            except Exception:
-                self.store.disconnect(identity, name)
-                raise ConnectionRejected("Sign-in could not be started") from None
+            return self._start_sign_in(identity, name)
+
+    def reauthenticate(self, identity, name):
+        with self.lock:
+            self._purge()
+            # Replace only this user's local session before clearing the Vault grant.
+            # Other users and their pending flows are untouched.
+            self.disconnect(identity, name)
+            return self._start_sign_in(identity, name, force_authentication=True)
+
+    def _start_sign_in(self, identity, name, *, force_authentication=False):
+        if len(self.pending) >= 256:
+            raise ConnectionRejected("Too many pending sign-ins")
+        generation = self.store.begin(identity, name).generation
+        state = secrets.token_urlsafe(32)
+        try:
+            extra = {"force_authentication": True} if force_authentication else {}
+            response = self.backend.token(identity, self.providers[name], state=state, **extra)
+            if response.get("accessToken") and not force_authentication:
+                self.store.complete_verified(identity, name, generation)
+                return None
+            # A forced sign-in must produce a browser flow, never silently reconnect.
+            url, session = response["authorizationUrl"], response["sessionUri"]
+            self.backend.validate_url(url)
+            if not re.fullmatch(r"urn:ietf:params:oauth:request_uri:[A-Za-z0-9._~-]{1,900}", session):
+                raise ValueError("Invalid authorization session")
+            self.backend.register_binding(identity, session, state)
+            self.pending[session] = Pending(identity, name, generation, state, session, url, self.clock() + 600)
+            return url
+        except Exception:
+            self.store.disconnect(identity, name)
+            raise ConnectionRejected("Sign-in could not be started") from None
 
     def callback(self, *args):
         raise ConnectionRejected("Binding is hosted by the platform")
@@ -197,6 +216,8 @@ def enable(ctx, raw):
                              portal_url=settings["portal_url"])
 
     class Connections(NativeConnections):
+        connection_actions = NativeConnections.connection_actions | {"hac:reauthenticate"}
+
         def identity(self, body, context):
             identity = super().identity(body, context)
             if identity.member not in settings["allowed_users"]:
@@ -213,6 +234,12 @@ def enable(ctx, raw):
             buttons = [{"type": "button", "text": {"type": "plain_text", "text":
                 "Disconnect" if action == "disconnect" else "Refresh sign-in" if state == "connecting" else "Sign in"},
                 "action_id": "hac:" + action, "value": "gateway"} for action in actions]
+            buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Sign in again"},
+                "action_id": "hac:reauthenticate", "value": "gateway", "confirm": {
+                    "title": {"type": "plain_text", "text": "Restart sign-in?"},
+                    "text": {"type": "plain_text", "text": "Start a new platform sign-in for your Slack account. Complete the browser flow before using Gateway tools again."},
+                    "confirm": {"type": "plain_text", "text": "Sign in again"},
+                    "deny": {"type": "plain_text", "text": "Cancel"}}})
             if url and state == "connecting":
                 buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Open sign-in"},
                     "action_id": "hac:open", "value": "gateway", "url": url})
@@ -226,6 +253,9 @@ def enable(ctx, raw):
                 if action == "hac:connect":
                     url = await asyncio.to_thread(runtime.connect, identity, name)
                     await self.home(client, identity, "Complete browser sign-in and Slack identity verification, then refresh here." if url else "Connected", url, name)
+                elif action == "hac:reauthenticate":
+                    url = await asyncio.to_thread(runtime.reauthenticate, identity, name)
+                    await self.home(client, identity, "New sign-in started. Open sign-in, complete browser verification, then select Refresh sign-in.", url, name)
                 elif action == "hac:disconnect":
                     await asyncio.to_thread(runtime.disconnect, identity, name)
                     await self.home(client, identity, "Disconnected locally. Remote authorizations are unchanged.")

@@ -7,6 +7,8 @@ from .connections import SlackIdentity
 
 
 class NativeConnections(AsyncMiddleware):
+    connection_actions = frozenset({"hac:connect", "hac:code", "hac:disconnect"})
+
     def __init__(self, runtime, workspaces):
         self.runtime, self.workspaces = runtime, frozenset(workspaces)
         self.tasks = set()
@@ -73,7 +75,7 @@ class NativeConnections(AsyncMiddleware):
                 return BoltResponse(status=200, body="")
             else:
                 name = action.get("value")
-                if name not in self.runtime.providers or aid not in {"hac:connect", "hac:code", "hac:disconnect"}:
+                if name not in self.runtime.providers or aid not in self.connection_actions:
                     raise ValueError("Invalid action")
                 work = self.action(client, identity, name, aid, body.get("trigger_id"))
             task = asyncio.create_task(self.safe(work))

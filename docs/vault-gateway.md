@@ -53,6 +53,27 @@ Authorization links stay in native Slack UI; model tools receive no OAuth data.
 After a task restart, connect again to reuse the existing Vault grant. Disconnect
 blocks local tool calls but does not revoke Cognito or Jira authorizations.
 
+## Sign in again
+
+To test a fresh platform authorization, select **Sign in again** in app Home
+and confirm. Open the new **Open sign-in** link, complete Cognito login and the
+platform's Slack identity verification, then select **Refresh sign-in**.
+
+The plugin sends `forceAuthentication=true` to `GetResourceOauth2Token` once,
+when starting this flow. Identity clears the stored refresh token for that
+user's Cognito grant and starts authorization again. Polling, ordinary sign-in,
+and tool calls omit the flag. This replaces only the requester's local connection
+and pending sign-in; other users keep their connections.
+
+Gateway tools remain blocked locally until the new binding succeeds. If starting
+sign-in fails, retry **Sign in again**. Authorization links stay in Slack UI and
+are never returned to model tools.
+
+This does not revoke access tokens already issued, disconnect Jira in the consent
+portal, or guarantee a password prompt: browser SSO sessions may still be reused.
+See [Identity token storage](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-authentication.html#automatic-refresh-token-storage)
+and the [API parameter](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_GetResourceOauth2Token.html).
+
 ## v0.2.0 binding policy
 
 Only the verified Slack identity that initiated a new authorization request may
