@@ -226,7 +226,7 @@ def enable(ctx, raw):
     sts = boto3.client("sts", region_name=settings["region"], config=config)
     def session_factory():
         credentials = sts.assume_role(RoleArn=settings["agent_role_arn"],
-            RoleSessionName="hermes-vault-gateway", DurationSeconds=900)["Credentials"]
+            RoleSessionName="hermes-agentcore-plugin", DurationSeconds=900)["Credentials"]
         # A fresh short-lived session per operation avoids persisting credentials
         # or retaining an expired role session in a long-running ECS task.
         return _session(credentials)
