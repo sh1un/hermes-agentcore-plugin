@@ -113,6 +113,33 @@ class ReauthenticationUITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sdk.get_resource_oauth2_token.call_args.kwargs["sessionUri"], self.uri)
         self.assertNotIn("forceAuthentication", self.sdk.get_resource_oauth2_token.call_args.kwargs)
 
+    async def test_message_and_tool_join_on_authenticated_slack_turn(self):
+        from contextvars import ContextVar
+        sc = sys.modules["gateway"].session_context
+        values = {"PLATFORM": "slack", "SCOPE_ID": "TTEST", "USER_ID": "UALICE",
+                  "CRON_SESSION": "", "CHAT_ID": "CTEST", "MESSAGE_ID": "21", "THREAD_ID": "20"}
+        sc._VAR_MAP = {"HERMES_SESSION_" + key: ContextVar(key) for key in values}
+        for key, value in values.items():
+            sc._VAR_MAP["HERMES_SESSION_" + key].set(value)
+        event = AsyncBoltRequest(body={"type": "event_callback", "team_id": "TTEST",
+            "event": {"type": "app_mention", "user": "UALICE", "channel": "CTEST", "ts": "21",
+                      "thread_ts": "20", "text": "Read TEST-123"}}, mode="socket_mode")
+        event.context.update(team_id="TTEST", authorize_result=True, client=self.client)
+        self.client.chat_postEphemeral = AsyncMock(return_value={"message_ts": "22"})
+        await self.ui.async_process(req=event, resp=BoltResponse(status=200), next=AsyncMock())
+        self.runtime.disconnect(self.alice, "gateway")
+        self.sdk.get_resource_oauth2_token.return_value = {"authorizationUrl": self.url, "sessionUri": self.uri}
+        handler = self.ctx.register_tool.call_args.kwargs["handler"]
+        result = json.loads(await asyncio.to_thread(handler, {"tool": "getAccessibleAtlassianResources",
+                                                            "arguments": {}}))
+        await asyncio.sleep(0)
+        self.assertEqual(result["status"], "action_required")
+        notice = self.client.chat_postEphemeral.call_args.kwargs
+        self.assertEqual((notice["user"], notice["channel"], notice["thread_ts"]), ("UALICE", "CTEST", "20"))
+        self.assertIn(self.url, json.dumps(notice["blocks"]))
+        self.assertNotIn(self.url, json.dumps(result))
+        self.assertNotIn("forceAuthentication", self.sdk.get_resource_oauth2_token.call_args.kwargs)
+
     async def test_unapproved_user_workspace_mismatch_and_untrusted_event_cannot_force(self):
         for kwargs in ({"user": "UOTHER"}, {"team": "TOTHER"}, {"trusted": False}):
             self.assertEqual((await self.dispatch("hac:reauthenticate", **kwargs)).status, 403)

@@ -213,6 +213,7 @@ def enable(ctx, raw):
     import boto3
     from botocore.config import Config
     import httpx
+    from .chat_retry import ChatRetry
     from .host import task_identity
     from .slack_ui import NativeConnections
     from .transport import call_mcp
@@ -252,6 +253,26 @@ def enable(ctx, raw):
 
     class Connections(NativeConnections):
         connection_actions = NativeConnections.connection_actions | {"hac:reauthenticate"}
+
+        async def async_process(self, *, req, resp, next):
+            body = req.body
+            actions = body.get("actions") or []
+            retry = bool(actions and actions[0].get("action_id") == "hac:retry_issue")
+            if retry or body.get("event", {}).get("type") in ("message", "app_mention"):
+                try:
+                    identity = self.identity(body, req.context)
+                    client = req.context["client"]
+                    if retry:
+                        from slack_bolt.response import BoltResponse
+                        if body.get("type") != "block_actions":
+                            return BoltResponse(status=403, body="")
+                        return await wired[0].click(identity, body, client)
+                    wired[0].observe(identity, body, client)
+                except (KeyError, ValueError, TypeError):
+                    if retry:
+                        from slack_bolt.response import BoltResponse
+                        return BoltResponse(status=403, body="")
+            return await super().async_process(req=req, resp=resp, next=next)
 
         def identity(self, body, context):
             identity = super().identity(body, context)
@@ -347,7 +368,7 @@ def enable(ctx, raw):
     def wire(app, adapter):
         if wired:
             raise RuntimeError("Only one Slack adapter is supported")
-        wired.append(True)
+        wired.append(ChatRetry(runtime, adapter))
         app.use(Connections(runtime, settings["workspace_ids"]))
     def shutdown():
         http.close()
@@ -361,11 +382,13 @@ def enable(ctx, raw):
             identity = task_identity(settings["workspace_ids"])
             if identity.member not in settings["allowed_users"]:
                 raise ValueError("Unapproved user")
+            if wired:
+                return json.dumps(wired[0].execute(identity, args["tool"], args["arguments"]))
             return json.dumps(runtime.execute(identity, "gateway", args["tool"], args["arguments"]))
         except Exception:
             return json.dumps({"error": "identity_unavailable"})
     ctx.register_tool(name="agentcore_jira_read", toolset="agentcore", handler=execute,
-        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. If tool_authorization_required is returned, show the authorization_portal_url link and ask the user to connect Jira / Atlassian, then retry. Manage platform sign-in in app Home.",
+        schema={"name": "agentcore_jira_read", "description": "Read Jira through AgentCore Gateway as the current Slack user. If tool_authorization_required is returned, show the authorization_portal_url link and ask the user to connect Jira / Atlassian, then retry. If action_required is returned, tell the user to use the private Slack buttons or open app Home and ask again.",
             "parameters": {"type": "object", "additionalProperties": False, "required": ["tool", "arguments"],
                 "properties": {"tool": {"type": "string", "enum": list(TOOLS)}, "arguments": {"type": "object"}}}})
     return runtime

@@ -55,6 +55,17 @@ Authorization links stay in native Slack UI; model tools receive no OAuth data.
 After a task restart, connect again to reuse the existing Vault grant. Sign out
 blocks local tool calls but does not revoke Cognito or Jira authorizations.
 
+## Read a Jira issue from Slack
+
+Ask for one issue by key, for example “Read TEST-123.” If sign-in is required,
+the plugin sends a button in the DM or a private prompt in the channel. Select
+**Retry lookup** after browser verification. If Jira still needs authorization,
+select **Connect Jira**, then retry. The read resumes in the original conversation.
+
+Retry buttons expire after 20 minutes. If the prompt disappears or the agent
+restarts, use app Home and ask again. Requests without a single issue key or a
+matching Slack message use the usual app Home instructions.
+
 ## Sign in again
 
 To test a fresh platform authorization, select **Sign in again** in app Home
