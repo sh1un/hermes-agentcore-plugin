@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import secrets
 import time
+from weakref import WeakValueDictionary
 from urllib.parse import urlsplit
 
 from .connections import LazyStore, Store, SlackIdentity, ConnectionRejected
@@ -128,6 +129,36 @@ class GatewayRuntime(Runtime):
                     return pending.url
             return self._start_sign_in(identity, name)
 
+    def home_state(self, identity):
+        with self.lock:
+            self._purge()
+            pending = next((p for p in self.pending.values() if p.identity == identity), None)
+            state = self.store.status(identity, "gateway").state
+            if state == "connecting" and pending is None:
+                self.disconnect(identity, "gateway")
+                state = "disconnected"
+            return state, pending
+
+    def poll_binding(self, pending):
+        with self.lock:
+            self._purge()
+            if self.pending.get(pending.session) is not pending:
+                return "ended"
+        response = self.backend.token(pending.identity, self.providers[pending.name], session=pending.session)
+        with self.lock:
+            self._purge()
+            if self.pending.get(pending.session) is not pending:
+                return "ended"
+            self._current(pending)
+            if response.get("accessToken"):
+                self.store.complete_verified(pending.identity, pending.name, pending.generation)
+                del self.pending[pending.session]
+                return "connected"
+            if response.get("sessionStatus") == "FAILED":
+                self.disconnect(pending.identity, pending.name)
+                return "failed"
+            return "waiting"
+
     def reauthenticate(self, identity, name):
         with self.lock:
             self._purge()
@@ -228,45 +259,89 @@ def enable(ctx, raw):
                 raise ValueError("Unapproved Slack member")
             return identity
 
+        def __init__(self, runtime, workspaces):
+            super().__init__(runtime, workspaces)
+            self.watchers = {}
+            self.publish_locks = WeakValueDictionary()
+
+        async def watch(self, client, pending):
+            delay = 3
+            try:
+                while True:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 15)
+                    try:
+                        outcome = await asyncio.to_thread(runtime.poll_binding, pending)
+                    except Exception:
+                        if runtime.clock() < pending.expires:
+                            continue
+                        outcome = "ended"
+                    if outcome != "waiting":
+                        notice = "" if outcome == "connected" else "Sign-in ended. Start again to continue."
+                        await self.home(client, pending.identity, notice)
+                        return
+            finally:
+                if self.watchers.get(pending.identity) is asyncio.current_task():
+                    self.watchers.pop(pending.identity)
+
         async def home(self, client, identity, notice="", url=None, active=None):
-            state = (await asyncio.to_thread(runtime.status, identity))["gateway"]
-            blocks = [{"type": "header", "text": {"type": "plain_text", "text": "Gateway Connections"}},
-                      {"type": "section", "text": {"type": "plain_text", "text": "Gateway: " + state}}]
-            if notice:
-                blocks.append({"type": "section", "text": {"type": "plain_text", "text": notice}})
-            actions = ["disconnect"] if state == "connected" else ["connect", "disconnect"] if state == "connecting" else ["connect"]
-            buttons = [{"type": "button", "text": {"type": "plain_text", "text":
-                "Disconnect" if action == "disconnect" else "Refresh sign-in" if state == "connecting" else "Sign in"},
-                "action_id": "hac:" + action, "value": "gateway"} for action in actions]
-            buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Sign in again"},
-                "action_id": "hac:reauthenticate", "value": "gateway", "confirm": {
-                    "title": {"type": "plain_text", "text": "Restart sign-in?"},
-                    "text": {"type": "plain_text", "text": "Start a new platform sign-in for your Slack account. Complete the browser flow before using Gateway tools again."},
-                    "confirm": {"type": "plain_text", "text": "Sign in again"},
-                    "deny": {"type": "plain_text", "text": "Cancel"}}})
-            if url and state == "connecting":
-                buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Open sign-in"},
-                    "action_id": "hac:open", "value": "gateway", "url": url})
-            blocks += [{"type": "actions", "elements": buttons}, {"type": "actions", "elements": [{
-                "type": "button", "text": {"type": "plain_text", "text": "Tool permissions"},
-                "action_id": "hac:open", "value": "gateway", "url": settings["portal_url"]}]}]
+            lock = self.publish_locks.setdefault(identity, asyncio.Lock())
+            async with lock:
+                await self.publish_home(client, identity, notice)
+
+        async def publish_home(self, client, identity, notice):
+            state, pending = await asyncio.to_thread(runtime.home_state, identity)
+            def plain(label):
+                return {"type": "plain_text", "text": label}
+            def button(label, action, style=None, **options):
+                element = {"type": "button", "text": plain(label), "action_id": "hac:" + action,
+                           "value": "gateway", **options}
+                if style:
+                    element["style"] = style
+                return element
+            def confirm(label, message):
+                return {"title": plain(label + "?"), "text": plain(message), "confirm": plain(label),
+                        "deny": plain("Keep current session"), "style": "danger"}
+
+            if pending:
+                message = "Finish signing in with your browser. This page updates automatically."
+                buttons = [button("Open sign-in", "open", "primary", url=pending.url),
+                           button("Cancel sign-in", "disconnect", "danger")]
+            elif state == "connected":
+                message = "Signed in. Manage your tool authorizations in the portal."
+                buttons = [button("Tools Consent Portal", "open", "primary", url=settings["portal_url"]),
+                           button("Sign in again", "reauthenticate", confirm=confirm("Sign in again",
+                                  "Restart browser verification for your account.")),
+                           button("Sign out", "disconnect", "danger", confirm=confirm("Sign out",
+                                  "Close your connection on this agent. Your provider authorizations stay active."))]
+            else:
+                message = notice or "Sign in to use gateway tools."
+                buttons = [button("Sign in", "connect", "primary")]
+            blocks = [{"type": "header", "text": plain("Gateway Connections")},
+                      {"type": "section", "text": plain(message)}, {"type": "actions", "elements": buttons}]
             await client.views_publish(user_id=identity.member, view={"type": "home", "blocks": blocks})
+            current = self.watchers.get(identity)
+            if pending and (not current or current.get_name() != str(pending.generation)):
+                if current and current is not asyncio.current_task():
+                    current.cancel()
+                self.watchers[identity] = asyncio.create_task(self.safe(self.watch(client, pending)),
+                                                            name=str(pending.generation))
+            elif not pending and current and current is not asyncio.current_task():
+                current.cancel()
 
         async def action(self, client, identity, name, action, trigger):
             try:
                 if action == "hac:connect":
-                    url = await asyncio.to_thread(runtime.connect, identity, name)
-                    await self.home(client, identity, "Complete browser sign-in and Slack identity verification, then refresh here." if url else "Connected", url, name)
+                    await asyncio.to_thread(runtime.connect, identity, name)
                 elif action == "hac:reauthenticate":
-                    url = await asyncio.to_thread(runtime.reauthenticate, identity, name)
-                    await self.home(client, identity, "New sign-in started. Open sign-in, complete browser verification, then select Refresh sign-in.", url, name)
+                    await asyncio.to_thread(runtime.reauthenticate, identity, name)
                 elif action == "hac:disconnect":
                     await asyncio.to_thread(runtime.disconnect, identity, name)
-                    await self.home(client, identity, "Disconnected locally. Remote authorizations are unchanged.")
                 else:
                     raise ValueError("Unsupported action")
+                await self.home(client, identity)
             except Exception:
-                await self.home(client, identity, "Sign-in failed or expired. Start again from this page.")
+                await self.home(client, identity, "Sign-in failed or expired. Start again.")
 
     wired = []
     def wire(app, adapter):

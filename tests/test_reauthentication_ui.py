@@ -94,6 +94,25 @@ class ReauthenticationUITests(unittest.IsolatedAsyncioTestCase):
         self.sdk.complete_resource_token_auth.assert_not_called()
         self.next_listener.assert_not_awaited()
 
+    async def test_home_progresses_from_one_button_to_signed_in_without_refresh(self):
+        await self.dispatch("hac:disconnect")
+        def buttons():
+            blocks = self.client.views_publish.call_args.kwargs["view"]["blocks"]
+            return [(b["text"]["text"], b.get("style")) for b in blocks[-1]["elements"]]
+        self.assertEqual(buttons(), [("Sign in", "primary")])
+        self.sdk.get_resource_oauth2_token.return_value = {"authorizationUrl": self.url, "sessionUri": self.uri}
+        await self.dispatch("hac:connect")
+        self.assertEqual(buttons(), [("Open sign-in", "primary"), ("Cancel sign-in", "danger")])
+        watcher = self.ui.watchers[self.alice]
+        await self.ui.home(self.client, self.alice)
+        self.assertIs(self.ui.watchers[self.alice], watcher)
+        self.sdk.get_resource_oauth2_token.return_value = {"accessToken": "private-new"}
+        await asyncio.wait_for(watcher, timeout=6)
+        self.assertIn(("Tools Consent Portal", "primary"), buttons())
+        self.assertIn(("Sign out", "danger"), buttons())
+        self.assertEqual(self.sdk.get_resource_oauth2_token.call_args.kwargs["sessionUri"], self.uri)
+        self.assertNotIn("forceAuthentication", self.sdk.get_resource_oauth2_token.call_args.kwargs)
+
     async def test_unapproved_user_workspace_mismatch_and_untrusted_event_cannot_force(self):
         for kwargs in ({"user": "UOTHER"}, {"team": "TOTHER"}, {"trusted": False}):
             self.assertEqual((await self.dispatch("hac:reauthenticate", **kwargs)).status, 403)

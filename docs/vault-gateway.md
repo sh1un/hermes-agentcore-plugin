@@ -43,7 +43,7 @@ This mode needs no callback listener or inbound port on the agent.
 ## Sign in and use tools
 
 Open app Home and select **Sign in**. Complete Cognito login and the platform's
-browser identity check, then return to Home and select **Refresh sign-in**.
+browser identity check, then return to Home to see your sign-in status.
 Hermes checks the pending session and enables tool calls when Identity returns
 an access token. Authorize Jira separately in the consent portal using the same
 Cognito account.
@@ -52,14 +52,14 @@ Each tool call retrieves a token from Identity and opens its own Gateway MCP
 connection. Keep scopes and custom parameters consistent between calls.
 Authorization links stay in native Slack UI; model tools receive no OAuth data.
 
-After a task restart, connect again to reuse the existing Vault grant. Disconnect
+After a task restart, connect again to reuse the existing Vault grant. Sign out
 blocks local tool calls but does not revoke Cognito or Jira authorizations.
 
 ## Sign in again
 
 To test a fresh platform authorization, select **Sign in again** in app Home
 and confirm. Open the new **Open sign-in** link, complete Cognito login and the
-platform's Slack identity verification, then select **Refresh sign-in**.
+platform's Slack identity verification, then return to Home.
 
 The plugin sends `forceAuthentication=true` to `GetResourceOauth2Token` once,
 when starting this flow. Identity clears the stored refresh token for that
@@ -97,7 +97,7 @@ The OAuth callback URL alone is insufficient. No Google-to-Slack email mapping
 or separate Slack **Confirm** click is required. An already signed-in browser
 may reuse its Slack session; this flow does not prove a fresh, deliberate click.
 
-**Refresh sign-in** polls Identity for the original pending session. It cannot
+The plugin automatically polls Identity for the original pending session. It cannot
 complete binding or open the local tool gate while authorization is pending.
 A different Slack user cannot refresh Alice's pending connection.
 

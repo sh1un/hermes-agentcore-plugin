@@ -214,7 +214,7 @@ class GatewayRuntimeTests(unittest.TestCase):
         result = self.runtime.execute(self.alice, "gateway", "getAccessibleAtlassianResources", {})
         self.assertEqual(result["error"], "tool_authorization_required")
         self.assertEqual(result["authorization_portal_url"], settings()["portal_url"])
-        self.assertIn("Tool permissions", result["message"])
+        self.assertIn("Tools Consent Portal", result["message"])
         self.assertNotIn("private", json.dumps(result))
         self.assertEqual(self.runtime.status(self.alice), {"gateway": "connected"})
         self.assertEqual(self.runtime.execute(self.bob, "gateway", "getAccessibleAtlassianResources", {})["error"], "connection_required")

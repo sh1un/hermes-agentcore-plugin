@@ -166,7 +166,7 @@ class Runtime:
                 return self.store.dispatch(identity, name, generation, call)
             except ToolAuthorizationRequired:
                 return {"error": "tool_authorization_required",
-                        "message": "Jira / Atlassian authorization is required. Open Slack app Home > Tool permissions, connect your account, then retry."}
+                        "message": "Jira / Atlassian authorization is required. Open Slack app Home > Tools Consent Portal, connect your account, then retry."}
             except ConnectionRejected:
                 return {"error": "connection_required", "message": "Use the app Home Connections page"}
             except Exception:
