@@ -30,7 +30,7 @@ def https_url(value, path=None):
 
 def validate_settings(s):
     s = dict(s)
-    for key in ("issuer", "cognito_domain", "client_id", "return_url", "portal_url", "gateway_url", "workspace_ids", "tools"):
+    for key in ("issuer", "cognito_domain", "client_id", "return_url", "portal_url", "gateway_url", "workspace_ids", "tools", "scope"):
         if not s.get(key):
             raise ValueError(f"Missing portal setting: {key}")
     for key in ("issuer", "cognito_domain", "portal_url", "gateway_url"):
@@ -51,7 +51,12 @@ def validate_settings(s):
         raise ValueError("Two explicit Gateway read tool names are required")
     if not 1 <= s.get("callback_port", 8849) <= 65535:
         raise ValueError("Invalid callback port")
-    s["scope"] = "openid email profile lazarus-agentcore/gateway.invoke"
+    scope = s["scope"]
+    if (not isinstance(scope, str) or not 1 <= len(scope) <= 4096
+            or "openid" not in scope.split(" ")
+            or any(not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e]{1,256}", part) for part in scope.split(" "))
+            or len(set(scope.split(" "))) != len(scope.split(" "))):
+        raise ValueError("Configure explicit OAuth scope supplied by the platform operator")
     return s
 
 

@@ -21,7 +21,9 @@ verify the browser user's identity independently before calling
    into your own Hermes image, install its requirements, and retain your entrypoint.
 3. Copy `examples/vault-gateway.toml`, replace the example values, and mount it
    read-only in the task. Keep connection metadata in a task-local directory;
-   multiple tasks must not share the same SQLite file.
+   multiple tasks must not share the same SQLite file. Set `scopes` to the exact
+   scopes supplied by your platform operator; the plugin does not choose a
+   platform-specific scope.
 4. Merge this configuration with your existing Hermes settings:
 
    ```yaml

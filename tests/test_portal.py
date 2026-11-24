@@ -20,6 +20,16 @@ def settings():
         return validate_settings(tomllib.load(f))
 
 
+class ScopeConfigurationTests(unittest.TestCase):
+    def test_explicit_operator_scope_is_required_and_preserved(self):
+        configured = settings()
+        configured["scope"] = "openid custom-api/read"
+        self.assertEqual(validate_settings(configured)["scope"], configured["scope"])
+        for invalid in (None, "openid openid", "openid bad\nvalue", "custom-api/read", "openid  read"):
+            with self.subTest(scope=invalid), self.assertRaises(ValueError):
+                validate_settings(dict(configured, scope=invalid))
+
+
 class ClaimsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

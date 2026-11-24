@@ -12,9 +12,11 @@ from botocore.session import get_session
 from botocore.validate import validate_parameters
 
 from agentcore_core.connections import Store, SlackIdentity, ConnectionRejected
-from agentcore_core.vault_gateway import CognitoVault, GatewayRuntime, Provider, SCOPES, validate_settings
+from agentcore_core.vault_gateway import CognitoVault, GatewayRuntime, Provider, validate_settings
 from agentcore_core.transport import ToolAuthorizationRequired
 
+
+SCOPES = ("openid", "email", "profile", "aws.cognito.signin.user.admin", "example-platform/gateway.invoke")
 
 def settings():
     return validate_settings(dict(mode="vault_gateway", region="ap-southeast-1", workload="example-hermes",
@@ -23,7 +25,7 @@ def settings():
         return_url="https://bindingapi.execute-api.ap-southeast-1.amazonaws.com/oauth/agentcore/callback",
         gateway_url="https://example-gateway.gateway.bedrock-agentcore.ap-southeast-1.amazonaws.com/mcp",
         portal_url="https://portal.example", workspace_ids=["TTEST"], allowed_users=["UALICE", "UBOB"],
-        data_dir="/tmp/hermes-vault", custom_parameters={"identity_provider": "Google"}))
+        data_dir="/tmp/hermes-vault", scopes=list(SCOPES), custom_parameters={"identity_provider": "Google"}))
 
 
 class VaultBackendTests(unittest.TestCase):
@@ -90,6 +92,20 @@ class VaultBackendTests(unittest.TestCase):
         with self.assertRaises(ConnectionRejected):
             self.backend.complete(self.person, uri)
         self.client.complete_resource_token_auth.assert_not_called()
+
+    def test_scopes_come_from_operator_configuration(self):
+        configured = settings()
+        configured["scopes"] = ["openid", "custom-api/read"]
+        configured = validate_settings(configured)
+        provider = Provider("gateway", configured["credential_provider"], configured["gateway_url"], tuple(configured["scopes"]))
+        self.backend.token(self.person, provider)
+        self.assertEqual(self.client.get_resource_oauth2_token.call_args.kwargs["scopes"], configured["scopes"])
+        for invalid in ([], "openid", ["openid", "bad scope"], ["openid", "openid"], ["openid", {}]):
+            with self.subTest(scopes=invalid), self.assertRaises(ValueError):
+                validate_settings(dict(configured, scopes=invalid))
+        configured.pop("scopes")
+        with self.assertRaises(ValueError):
+            validate_settings(configured)
 
     def test_configuration_rejects_legacy_role_or_direct_cognito_callback(self):
         for key, value in [("binding_role_arn", "arn:aws:iam::123456789012:role/binder"),

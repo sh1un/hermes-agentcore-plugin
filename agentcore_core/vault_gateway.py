@@ -15,7 +15,6 @@ from urllib.parse import urlsplit
 from .connections import LazyStore, Store, SlackIdentity, ConnectionRejected
 from .runtime import AgentCore, Pending, Provider, Runtime
 
-SCOPES = ("openid", "email", "profile", "aws.cognito.signin.user.admin", "lazarus-agentcore/gateway.invoke")
 TOOLS = {"getAccessibleAtlassianResources": "JiraRovoTarget___getAccessibleAtlassianResources",
          "getJiraIssue": "JiraRovoTarget___getJiraIssue"}
 
@@ -23,7 +22,7 @@ TOOLS = {"getAccessibleAtlassianResources": "JiraRovoTarget___getAccessibleAtlas
 def validate_settings(raw):
     s = dict(raw)
     required = ("region", "workload", "credential_provider", "agent_role_arn", "return_url",
-                "binding_api_url", "gateway_url", "portal_url", "workspace_ids", "allowed_users", "data_dir")
+                "binding_api_url", "gateway_url", "portal_url", "workspace_ids", "allowed_users", "data_dir", "scopes")
     if s.get("mode") != "vault_gateway" or any(not s.get(key) for key in required):
         raise ValueError("Missing Vault Gateway settings")
     if not re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-\d", s["region"]):
@@ -54,8 +53,13 @@ def validate_settings(raw):
     params = s.setdefault("custom_parameters", {})
     if not isinstance(params, dict) or set(params) - {"identity_provider"} or any(v != "Google" for v in params.values()):
         raise ValueError("Only a stable Google login hint is supported")
-    if s.get("scopes", list(SCOPES)) != list(SCOPES) or s.get("tools", TOOLS) != TOOLS:
-        raise ValueError("Use the reviewed scopes and Jira read tools")
+    scopes = s["scopes"]
+    if (not isinstance(scopes, list) or not 1 <= len(scopes) <= 32 or "openid" not in scopes
+            or any(not isinstance(scope, str) or not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e]{1,256}", scope) for scope in scopes)
+            or len(set(scopes)) != len(scopes)):
+        raise ValueError("Configure explicit OAuth scopes supplied by the platform operator")
+    if s.get("tools", TOOLS) != TOOLS:
+        raise ValueError("Use the reviewed Jira read tools")
     if "binding_role_arn" in s:
         raise ValueError("Agents must not receive binding-role credentials")
     return s
@@ -209,7 +213,7 @@ def enable(ctx, raw):
     http = httpx.Client(timeout=10, follow_redirects=False, trust_env=False)
     store = LazyStore(lambda: Store(Path(settings["data_dir"]).expanduser() / "connections.sqlite",
                   settings["region"] + ":" + settings["workload"], frozenset({"gateway"})))
-    provider = Provider("gateway", settings["credential_provider"], settings["gateway_url"], SCOPES)
+    provider = Provider("gateway", settings["credential_provider"], settings["gateway_url"], tuple(settings["scopes"]))
     def transport(provider, token, tool, arguments):
         return call_mcp(provider, token, TOOLS[tool], arguments)
     runtime = GatewayRuntime(store, CognitoVault(settings, session_factory, http), transport, [provider],
